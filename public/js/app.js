@@ -1901,11 +1901,7 @@ function renderInventoryStores() {
         </div>
       </div>`;
   }).join('');
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-  }).join('');
+
 }
 
 function inventorySearch(val) {

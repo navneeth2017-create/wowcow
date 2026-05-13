@@ -48,6 +48,61 @@ async function migrate() {
   // Seed default notification email
   await q("INSERT INTO notification_emails (email, label) VALUES ('d.n.holding7@gmail.com', 'Admin') ON CONFLICT DO NOTHING");
 
+  // ── Product migration: replace dairy SKUs with ADDY products ──────────────
+  const dairySKUs = ['WC-MILK-01','WC-MILK-02','WC-CREAM-01','WC-BUTR-01','WC-CHDR-01','WC-YGRT-01'];
+  const dairyRows = await all(`SELECT id FROM products WHERE sku = ANY($1)`, [dairySKUs]);
+  if (dairyRows.length > 0) {
+    const dairyIds = dairyRows.map(r => r.id);
+    console.log(`🔄 Migrating ${dairyIds.length} dairy products to ADDY product line...`);
+    // Remove prices and inventory tied to dairy products, then the products themselves
+    await q(`DELETE FROM product_prices WHERE product_id = ANY($1)`, [dairyIds]);
+    await q(`DELETE FROM store_inventory WHERE product_id = ANY($1)`, [dairyIds]);
+    await q(`DELETE FROM cart_items WHERE product_id = ANY($1)`, [dairyIds]);
+    await q(`DELETE FROM products WHERE id = ANY($1)`, [dairyIds]);
+    console.log('  ✓ Old dairy products removed');
+  }
+
+  const addyProducts = [
+    { name:'ADDY Focus Capsules 15ct',    description:'Clinically studied whole green coffee powder (WGCP) capsules. Sustained focus with no crash. High-impulse checkout sell.',  sku:'ADDY-CAP-15',  stock:500, image_url:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=400', prices:{ store_owner:8.50,  distributor:7.00,  rep:7.50,  master_distributor:6.00  } },
+    { name:'ADDY Focus Capsules 60ct',    description:'Full-size bottle for repeat customers. Same WGCP formula, better per-unit margin. Strong re-order velocity.',              sku:'ADDY-CAP-60',  stock:400, image_url:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400', prices:{ store_owner:28.00, distributor:23.00, rep:25.00, master_distributor:20.00 } },
+    { name:'ADDY Energy Shot Blue Razz',  description:'Single-serve Blue Raspberry energy shot. All-natural, no crash. Ideal near registers and cooler doors.',                   sku:'ADDY-SHOT-BR', stock:600, image_url:'https://images.unsplash.com/photo-1622543925917-763c34d1a86e?w=400', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
+    { name:'ADDY Energy Shot Strawberry', description:'Single-serve Strawberry energy shot. Same clean ADDY formula — the brand your customers already know.',                   sku:'ADDY-SHOT-SW', stock:600, image_url:'https://images.unsplash.com/photo-1534353436294-0dbd4bdac845?w=400', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
+    { name:'ADDY Energy Gummies',         description:'Chewable energy and focus gummies. No-pill format with strong crossover appeal. Expanding customer reach.',                sku:'ADDY-GUM-01',  stock:350, image_url:'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=400', prices:{ store_owner:9.00,  distributor:7.50,  rep:8.00,  master_distributor:6.50  } },
+  ];
+
+  for (const p of addyProducts) {
+    const existing = await one('SELECT id FROM products WHERE sku=$1', [p.sku]);
+    if (!existing) {
+      const r = await one(
+        'INSERT INTO products (name,description,image_url,sku,stock,active) VALUES ($1,$2,$3,$4,$5,1) RETURNING id',
+        [p.name, p.description, p.image_url, p.sku, p.stock]
+      );
+      for (const [role, price] of Object.entries(p.prices)) {
+        await q(
+          'INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3) ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price',
+          [r.id, role, price]
+        );
+      }
+      console.log(`  ✓ Added product: ${p.name}`);
+    }
+  }
+
+  // Seed demo inventory for all stores that are missing ADDY inventory records
+  const allStores = await all('SELECT id FROM stores');
+  const allProducts = await all("SELECT id FROM products WHERE active=1");
+  let inventorySeeded = 0;
+  for (const store of allStores) {
+    for (const prod of allProducts) {
+      const qty = Math.floor(Math.random() * 120) + 5;
+      const result = await q(
+        'INSERT INTO store_inventory (store_id,product_id,quantity,low_stock_threshold) VALUES ($1,$2,$3,10) ON CONFLICT DO NOTHING',
+        [store.id, prod.id, qty]
+      );
+      if (result.rowCount > 0) inventorySeeded++;
+    }
+  }
+  if (inventorySeeded > 0) console.log(`  ✓ Seeded inventory for ${allStores.length} stores (${inventorySeeded} records)`);
+
   // Seed admin if no users exist yet
   const existing = await one('SELECT id FROM users LIMIT 1');
   if (!existing) {

@@ -15,8 +15,8 @@ async function loadProductsTab() {
   _allProducts = products || [];
 
   // Low stock warning banner
-  const redProducts    = _allProducts.filter(p => p.active && p.stock <= 50);
-  const yellowProducts = _allProducts.filter(p => p.active && p.stock >= 51 && p.stock <= 99);
+  const redProducts    = _allProducts.filter(p => p.active === 1 && p.stock <= 50);
+  const yellowProducts = _allProducts.filter(p => p.active === 1 && p.stock >= 51 && p.stock <= 99);
   const bannerEl = document.getElementById('products-low-stock-banner');
   if (bannerEl) {
     if (redProducts.length > 0 || yellowProducts.length > 0) {
@@ -84,19 +84,30 @@ function renderProductsTable() {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">No products yet. Add your first product.</td></tr>';
     return;
   }
-  tbody.innerHTML = _allProducts.map(p => {
+  tbody.innerHTML = _allProducts.map((p, i) => {
     const prices = PRODUCT_TIERS.map(t => {
       const rp = (p.role_prices || []).find(x => x.role === t.key);
       return rp ? `<span style="white-space:nowrap;">${t.label}: <strong>$${parseFloat(rp.price).toFixed(2)}</strong></span>` : '';
     }).filter(Boolean).join('<br>');
+    const statusBadge = p.active === 2
+      ? `<span class="status-badge coming-soon">Coming Soon</span>`
+      : p.active === 1
+        ? `<span class="status-badge active">Active</span>`
+        : `<span class="status-badge inactive">Inactive</span>`;
+    const imgEl = p.image_url
+      ? `<img src="${p.image_url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;" onerror="this.outerHTML='<div style=\\'width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;\\'>💊</div>'">`
+      : `<div style="width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;">💊</div>`;
+    const preorderInfo = p.active === 2
+      ? `<span style="font-size:11px;color:#7c3aed;font-weight:600;display:block;margin-top:4px;">👥 ${p.preorder_count || 0} interested</span>`
+      : '';
     return `
-      <tr>
-        <td>${p.image_url ? `<img src="${p.image_url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;" onerror="this.style.display='none'">` : '<div style="width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px;">📦</div>'}</td>
-        <td style="font-weight:500">${esc(p.name)}</td>
+      <tr class="table-row-anim" style="animation-delay:${i * 30}ms">
+        <td>${imgEl}</td>
+        <td style="font-weight:500">${esc(p.name)}${preorderInfo}</td>
         <td style="font-size:12px;color:var(--text-muted)">${esc(p.sku || '—')}</td>
         <td style="font-size:12px;line-height:1.8;">${prices || '<span style="color:var(--text-muted)">No prices set</span>'}</td>
-        <td>${p.stock}</td>
-        <td><span class="status-badge ${p.active ? 'active' : 'inactive'}">${p.active ? 'Active' : 'Inactive'}</span></td>
+        <td>${p.active === 2 ? '<span style="color:var(--text-muted);font-size:13px;">—</span>' : p.stock}</td>
+        <td>${statusBadge}</td>
         <td>
           <div style="display:flex;gap:6px;">
             <button class="btn btn-sm btn-outline" onclick="showEditProduct(${p.id})">Edit</button>
@@ -125,7 +136,7 @@ function showEditProduct(id) {
   document.getElementById('pf-sku').value = p.sku || '';
   document.getElementById('pf-description').value = p.description || '';
   document.getElementById('pf-stock').value = p.stock;
-  document.getElementById('pf-active').value = p.active ? '1' : '0';
+  document.getElementById('pf-active').value = String(p.active ?? 1);
   document.getElementById('pf-image-url').value = p.image_url || '';
   updateImagePreview(p.image_url);
   // Fill all tier prices

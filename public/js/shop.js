@@ -84,36 +84,70 @@ function renderProducts() {
     grid.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">No products available.</p>';
     return;
   }
-  grid.innerHTML = _products.map(p => {
+  grid.innerHTML = _products.map((p, i) => {
+    const isComingSoon = p.active === 2;
     const price = p.my_price !== null && p.my_price !== undefined ? `$${parseFloat(p.my_price).toFixed(2)}` : 'No price set';
     const hasPrice = p.my_price !== null && p.my_price !== undefined;
     const stockClass = p.stock < 20 ? 'low' : '';
-    const imgEl = p.image_url
-      ? `<div class="product-img-wrap"><img class="product-img" src="${p.image_url}" alt="${esc(p.name)}" onload="this.parentElement.classList.add('loaded')" onerror="this.parentElement.classList.add('failed')"><span class="product-img-fallback">📦</span></div>`
-      : `<div class="product-img-wrap failed"><span class="product-img-fallback">📦</span></div>`;
+
+    const imgContent = p.image_url
+      ? `<img class="product-img" src="${p.image_url}" alt="${esc(p.name)}" onload="this.parentElement.classList.add('loaded')" onerror="this.parentElement.classList.add('failed')">`
+      : '';
+    const fallback = `<div class="product-img-placeholder"><span>💊</span><p>${esc(p.name)}</p></div>`;
+    const comingSoonOverlay = isComingSoon ? `
+      <div class="coming-soon-overlay">
+        <span style="font-size:28px;">🔜</span>
+        <span class="coming-soon-badge-pill">Coming Soon</span>
+        ${p.preorder_count > 0 ? `<span style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px;">${p.preorder_count} interested</span>` : ''}
+      </div>` : '';
+
+    const imgEl = `<div class="product-img-wrap" style="position:relative;">${imgContent}${fallback}${comingSoonOverlay}</div>`;
+
+    const actionArea = isComingSoon ? `
+      <button class="btn-notify ${p.user_preordered ? 'notified' : ''}"
+        id="notify-btn-${p.id}"
+        onclick="${p.user_preordered ? '' : `notifyMe(${p.id})`}"
+        ${p.user_preordered ? 'disabled' : ''}>
+        ${p.user_preordered ? "✓ You're on the list" : '🔔 Notify Me When Available'}
+      </button>` : `
+      <div class="product-price">${price}</div>
+      <div class="product-stock ${stockClass}">${p.stock > 0 ? `${p.stock.toLocaleString()} in stock` : '⚠ Out of stock'}</div>
+      <div class="qty-row">
+        <button class="qty-btn" onclick="changeQty(${p.id}, -1)">−</button>
+        <input class="qty-input" type="number" id="qty-${p.id}" value="1" min="1" max="${p.stock}" step="1"
+          oninput="validateQtyInput(this, ${p.id})"
+          onkeydown="if(['e','E','+','-','.'].includes(event.key)) event.preventDefault()">
+        <button class="qty-btn" onclick="changeQty(${p.id}, 1)">+</button>
+      </div>
+      <button class="add-btn" onclick="addToCart(${p.id})" ${!hasPrice || p.stock === 0 ? 'disabled' : ''}>${!hasPrice ? 'No Price Set' : p.stock === 0 ? 'Out of Stock' : 'Add to Cart'}</button>`;
+
     return `
-      <div class="product-card">
+      <div class="product-card table-row-anim" style="animation-delay:${i * 40}ms">
         ${imgEl}
         <div class="product-body">
           <div class="product-name">${esc(p.name)}</div>
           ${p.sku ? `<div class="product-sku">SKU: ${esc(p.sku)}</div>` : ''}
           <div class="product-desc">${esc(p.description || '')}</div>
-          <div style="margin-top:auto;">
-            <div class="product-price">${price}</div>
-            <div class="product-stock ${stockClass}">${p.stock > 0 ? `${p.stock.toLocaleString()} in stock` : '⚠ Out of stock'}</div>
-            <div class="qty-row">
-              <button class="qty-btn" onclick="changeQty(${p.id}, -1)">−</button>
-              <input class="qty-input" type="number" id="qty-${p.id}" value="1" min="1" max="${p.stock}" step="1"
-                oninput="validateQtyInput(this, ${p.id})"
-                onkeydown="if(['e','E','+','-','.'].includes(event.key)) event.preventDefault()">
-              <button class="qty-btn" onclick="changeQty(${p.id}, 1)">+</button>
-            </div>
-            <button class="add-btn" onclick="addToCart(${p.id})" ${!hasPrice || p.stock === 0 ? 'disabled' : ''}>${!hasPrice ? 'No Price Set' : p.stock === 0 ? 'Out of Stock' : 'Add to Cart'}</button>
-          </div>
+          <div style="margin-top:auto;">${actionArea}</div>
         </div>
       </div>
     `;
   }).join('');
+}
+
+async function notifyMe(productId) {
+  const btn = document.getElementById(`notify-btn-${productId}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+  const result = await apiFetch('/api/preorders', { method: 'POST', body: JSON.stringify({ product_id: productId }) });
+  if (result && result.success) {
+    if (btn) { btn.classList.add('notified'); btn.textContent = "✓ You're on the list"; }
+    showToast("You're on the list! We'll email you when it's available.", 'success');
+    const p = _products.find(x => x.id === productId);
+    if (p) { p.user_preordered = true; p.preorder_count = (p.preorder_count || 0) + 1; }
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = '🔔 Notify Me When Available'; }
+    showToast('Something went wrong. Try again.', 'error');
+  }
 }
 
 function changeQty(productId, delta) {

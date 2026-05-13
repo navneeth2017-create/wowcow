@@ -5,21 +5,20 @@ function getRole() { return localStorage.getItem('dh_role'); }
 
 function logout() {
   localStorage.removeItem('wc_token');
-  localStorage.removeItem('dh_role');
+  localStorage.removeItem('wc_role');
 
-  // Build farewell overlay
+  // Cover the dashboard IMMEDIATELY — no opacity transition on the overlay itself
   const overlay = document.createElement('div');
   overlay.style.cssText = `
     position:fixed;inset:0;z-index:99999;
     background:#0f172a;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
-    opacity:0;transition:opacity 0.5s ease;
     font-family:'DM Sans',sans-serif;
     text-align:center;padding:24px;
   `;
 
   overlay.innerHTML = `
-    <div id="farewell-inner" style="opacity:0;transform:translateY(16px);transition:opacity 0.7s ease 0.3s,transform 0.7s ease 0.3s;">
+    <div id="farewell-inner" style="opacity:0;transform:translateY(16px);transition:opacity 0.6s ease 0.15s,transform 0.6s ease 0.15s;">
       <div style="width:64px;height:64px;background:#2563eb;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 28px;">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
           <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="1.8" fill="none"/>
@@ -50,21 +49,15 @@ function logout() {
 
   document.body.appendChild(overlay);
 
-  // Fade in overlay
+  // Animate inner content in after overlay is already covering the screen
   requestAnimationFrame(() => {
-    overlay.style.opacity = '1';
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const inner = document.getElementById('farewell-inner');
       if (inner) { inner.style.opacity = '1'; inner.style.transform = 'translateY(0)'; }
-    }, 100);
+    });
   });
 
-  // Fade out and redirect after 2.8s
-  setTimeout(() => {
-    overlay.style.transition = 'opacity 0.8s ease';
-    overlay.style.opacity = '0';
-    setTimeout(() => { window.location.href = '/index.html'; }, 850);
-  }, 2800);
+  setTimeout(() => { window.location.replace('/index.html'); }, 2600);
 }
 
 function requireAuth(allowedRoles) {
@@ -162,6 +155,7 @@ function showToast(message, type = 'success') {
 // --- Animated Counter ---
 function animateValue(el, end) {
   if (!el) return;
+  el.classList.add('stat-pop');
   const duration = 800;
   const startTime = performance.now();
   const endNum = Number(end);
@@ -177,6 +171,7 @@ function animateValue(el, end) {
 
 function animateCurrency(el, end) {
   if (!el) return;
+  el.classList.add('stat-pop');
   const duration = 800;
   const startTime = performance.now();
   const endNum = Number(end);
@@ -953,12 +948,20 @@ async function handleSignup(e) {
 function switchTab(tab, btn) {
   ['stores', 'pending', 'reps', 'users', 'products', 'orders', 'inventory', 'settings'].forEach(t => {
     const el = document.getElementById('tab-' + t);
-    if (el) el.style.display = t === tab ? 'block' : 'none';
+    if (!el) return;
+    if (t === tab) {
+      el.style.display = 'block';
+      el.classList.remove('tab-pane');
+      void el.offsetWidth; // force reflow to restart animation
+      el.classList.add('tab-pane');
+    } else {
+      el.style.display = 'none';
+    }
   });
   document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
-  if (tab === 'pending') { loadPendingApprovals(); }
+  if (tab === 'pending') loadPendingApprovals();
   if (tab === 'reps') loadAdminReps();
   if (tab === 'users') loadUsersTab();
   if (tab === 'products') loadProductsTab();

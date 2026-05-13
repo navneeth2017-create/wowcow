@@ -154,5 +154,14 @@ CREATE TABLE IF NOT EXISTS notification_emails (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS preorders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  notified INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, product_id)
+);
+
 -- Migration: add pricing_tier to users if not already present
 ALTER TABLE users ADD COLUMN IF NOT EXISTS pricing_tier TEXT;

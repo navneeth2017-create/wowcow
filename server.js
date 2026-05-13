@@ -89,11 +89,11 @@ async function migrate() {
   }
 
   const addyProducts = [
-    { name:'ADDY Focus Capsules 15ct',    description:'Clinically studied whole green coffee powder (WGCP) capsules. Sustained focus with no crash. High-impulse checkout sell.',  sku:'ADDY-CAP-15',  stock:500, image_url:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=400', prices:{ store_owner:8.50,  distributor:7.00,  rep:7.50,  master_distributor:6.00  } },
-    { name:'ADDY Focus Capsules 60ct',    description:'Full-size bottle for repeat customers. Same WGCP formula, better per-unit margin. Strong re-order velocity.',              sku:'ADDY-CAP-60',  stock:400, image_url:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400', prices:{ store_owner:28.00, distributor:23.00, rep:25.00, master_distributor:20.00 } },
-    { name:'ADDY Energy Shot Blue Razz',  description:'Single-serve Blue Raspberry energy shot. All-natural, no crash. Ideal near registers and cooler doors.',                   sku:'ADDY-SHOT-BR', stock:600, image_url:'https://images.unsplash.com/photo-1622543925917-763c34d1a86e?w=400', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
-    { name:'ADDY Energy Shot Strawberry', description:'Single-serve Strawberry energy shot. Same clean ADDY formula — the brand your customers already know.',                   sku:'ADDY-SHOT-SW', stock:600, image_url:'https://images.unsplash.com/photo-1534353436294-0dbd4bdac845?w=400', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
-    { name:'ADDY Energy Gummies',         description:'Chewable energy and focus gummies. No-pill format with strong crossover appeal. Expanding customer reach.',                sku:'ADDY-GUM-01',  stock:350, image_url:'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=400', prices:{ store_owner:9.00,  distributor:7.50,  rep:8.00,  master_distributor:6.50  } },
+    { name:'ADDY Focus Capsules 15ct',    description:'Clinically studied whole green coffee powder (WGCP) capsules. Sustained focus with no crash. High-impulse checkout sell.',  sku:'ADDY-CAP-15',  stock:500, image_url:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop', prices:{ store_owner:8.50,  distributor:7.00,  rep:7.50,  master_distributor:6.00  } },
+    { name:'ADDY Focus Capsules 60ct',    description:'Full-size bottle for repeat customers. Same WGCP formula, better per-unit margin. Strong re-order velocity.',              sku:'ADDY-CAP-60',  stock:400, image_url:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=600&auto=format&fit=crop&q=80', prices:{ store_owner:28.00, distributor:23.00, rep:25.00, master_distributor:20.00 } },
+    { name:'ADDY Energy Shot Blue Razz',  description:'Single-serve Blue Raspberry energy shot. All-natural, no crash. Ideal near registers and cooler doors.',                   sku:'ADDY-SHOT-BR', stock:600, image_url:'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
+    { name:'ADDY Energy Shot Strawberry', description:'Single-serve Strawberry energy shot. Same clean ADDY formula — the brand your customers already know.',                   sku:'ADDY-SHOT-SW', stock:600, image_url:'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&auto=format&fit=crop', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
+    { name:'ADDY Energy Gummies',         description:'Chewable energy and focus gummies. No-pill format with strong crossover appeal. Expanding customer reach.',                sku:'ADDY-GUM-01',  stock:350, image_url:'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=600&auto=format&fit=crop', prices:{ store_owner:9.00,  distributor:7.50,  rep:8.00,  master_distributor:6.50  } },
   ];
 
   for (const p of addyProducts) {
@@ -128,6 +128,18 @@ async function migrate() {
     }
   }
   if (inventorySeeded > 0) console.log(`  ✓ Seeded inventory for ${allStores.length} stores (${inventorySeeded} records)`);
+
+  // Fix image URLs on any already-existing ADDY products in the DB
+  const imgFixes = [
+    { sku:'ADDY-CAP-15',  url:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop' },
+    { sku:'ADDY-CAP-60',  url:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=600&auto=format&fit=crop&q=80' },
+    { sku:'ADDY-SHOT-BR', url:'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop' },
+    { sku:'ADDY-SHOT-SW', url:'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&auto=format&fit=crop' },
+    { sku:'ADDY-GUM-01',  url:'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=600&auto=format&fit=crop' },
+  ];
+  for (const fix of imgFixes) {
+    await q('UPDATE products SET image_url=$1 WHERE sku=$2', [fix.url, fix.sku]);
+  }
 
   // Seed admin if no users exist yet
   const existing = await one('SELECT id FROM users LIMIT 1');
@@ -792,11 +804,13 @@ app.get('/api/distributor/stores', authenticate, authorize('distributor'), async
 app.get('/api/products', authenticate, async (req, res) => {
   try {
     const { role, id: userId } = req.user;
-    const products = await all('SELECT * FROM products WHERE active=1 ORDER BY name');
+    const products = await all('SELECT * FROM products WHERE active IN (1,2) ORDER BY active DESC, name');
     const result = await Promise.all(products.map(async p => {
-      const price = await getPriceForUser(p.id, userId, role);
+      const price = p.active === 1 ? await getPriceForUser(p.id, userId, role) : null;
       const allPrices = role === 'admin' ? await all('SELECT role,user_id,price FROM product_prices WHERE product_id=$1', [p.id]) : null;
-      return { ...p, my_price: price, all_prices: allPrices };
+      const preorder_count = p.active === 2 ? (await one('SELECT COUNT(*) as c FROM preorders WHERE product_id=$1', [p.id]))?.c || 0 : 0;
+      const user_preordered = p.active === 2 ? !!(await one('SELECT id FROM preorders WHERE product_id=$1 AND user_id=$2', [p.id, userId])) : false;
+      return { ...p, my_price: price, all_prices: allPrices, preorder_count, user_preordered };
     }));
     res.json(result);
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
@@ -855,6 +869,41 @@ app.patch('/api/products/:id', authenticate, authorize('admin'), async (req, res
         }
       }
     }
+    // If flipping from Coming Soon (2) → Active (1), email everyone who pre-ordered
+    if (p.active === 2 && active === 1 && resend) {
+      const preorders = await all(
+        'SELECT u.email, u.name FROM preorders po JOIN users u ON u.id=po.user_id WHERE po.product_id=$1 AND po.notified=0',
+        [req.params.id]
+      );
+      const productName = name ?? p.name;
+      for (const user of preorders) {
+        try {
+          await resend.emails.send({
+            from: process.env.EMAIL_FROM || 'WowCow <notifications@wowcow.com>',
+            to: [user.email],
+            subject: `${productName} is now available — WowCow`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;">
+              <div style="background:#2563eb;border-radius:12px;padding:24px;text-align:center;margin-bottom:28px;">
+                <p style="color:rgba(255,255,255,0.7);font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:0 0 8px;">WowCow Distribution</p>
+                <h1 style="color:#fff;font-size:26px;font-weight:800;margin:0;">It's live! 🎉</h1>
+              </div>
+              <p>Hi ${user.name || 'there'},</p>
+              <p>You asked us to let you know — <strong>${productName}</strong> is now available to order on WowCow.</p>
+              <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:20px;margin:20px 0;text-align:center;">
+                <p style="font-size:18px;font-weight:700;color:#16a34a;margin:0;">✓ Now Available</p>
+                <p style="color:#374151;margin:8px 0 0;">${productName}</p>
+              </div>
+              <p>Log in to your WowCow account to place an order.</p>
+              <p style="color:#64748b;font-size:12px;margin-top:32px;">You received this because you clicked "Notify Me" on this product.</p>
+            </div>`
+          });
+        } catch(emailErr) { console.error('Preorder notify email failed:', emailErr.message); }
+      }
+      if (preorders.length > 0) {
+        await q('UPDATE preorders SET notified=1 WHERE product_id=$1', [req.params.id]);
+        console.log(`✓ Notified ${preorders.length} preorder users for: ${productName}`);
+      }
+    }
     await logActivity('updated_product', name||p.name, req.user.email);
     res.json(updated);
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
@@ -879,6 +928,27 @@ app.delete('/api/products/:id', authenticate, authorize('admin'), async (req, re
     if (!p) return res.status(404).json({ error: 'Product not found' });
     await q('DELETE FROM products WHERE id=$1', [req.params.id]);
     await logActivity('deleted_product', p.name, req.user.email);
+    res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+// ── PREORDERS ─────────────────────────────────────────────────────────────────
+app.post('/api/preorders', authenticate, async (req, res) => {
+  try {
+    const { product_id } = req.body;
+    const product = await one('SELECT * FROM products WHERE id=$1 AND active=2', [product_id]);
+    if (!product) return res.status(404).json({ error: 'Product not found or not coming soon' });
+    await q(
+      'INSERT INTO preorders (user_id,product_id) VALUES ($1,$2) ON CONFLICT (user_id,product_id) DO NOTHING',
+      [req.user.id, product_id]
+    );
+    res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+app.delete('/api/preorders/:productId', authenticate, async (req, res) => {
+  try {
+    await q('DELETE FROM preorders WHERE user_id=$1 AND product_id=$2', [req.user.id, req.params.productId]);
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });

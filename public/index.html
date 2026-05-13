@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WowCow Distribution — Premium Dairy Products</title>
+  <title>WowCow Distribution — Energy &amp; Focus Supplements</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
@@ -252,9 +252,9 @@
   </nav>
 
   <section class="hero">
-    <div class="hero-eyebrow">Premium Dairy Distribution</div>
-    <h1 class="hero-title">Fresh from the farm.<br><span class="blue">Straight to your shelves.</span></h1>
-    <p class="hero-sub">WowCow partners with convenience stores, smoke shops, and independent retailers to deliver premium dairy products at competitive wholesale prices — reliably, every time.</p>
+    <div class="hero-eyebrow">Energy &amp; Focus Supplement Distribution</div>
+    <h1 class="hero-title">Fuel your shelves.<br><span class="blue">Powered by demand.</span></h1>
+    <p class="hero-sub">WowCow partners with convenience stores, smoke shops, and independent retailers to distribute premium energy shots, focus capsules, and supplement brands — at competitive wholesale prices, reliably.</p>
     <div class="hero-cta">
       <a href="/login.html" id="hero-signup-btn" class="btn-primary">Become a Partner</a>
       <a href="#products" class="btn-secondary">View Our Products</a>
@@ -262,7 +262,7 @@
     <div class="hero-stats">
       <div class="hero-stat"><div class="hero-stat-value">200+</div><div class="hero-stat-label">Partner Stores</div></div>
       <div class="hero-stat-divider"></div>
-      <div class="hero-stat"><div class="hero-stat-value">6</div><div class="hero-stat-label">Core Products</div></div>
+      <div class="hero-stat"><div class="hero-stat-value">5<span style="font-size:22px;">+</span></div><div class="hero-stat-label">Product SKUs</div></div>
       <div class="hero-stat-divider"></div>
       <div class="hero-stat"><div class="hero-stat-value">48h</div><div class="hero-stat-label">Avg Delivery</div></div>
       <div class="hero-stat-divider"></div>
@@ -275,9 +275,9 @@
       <div class="products-header">
         <div>
           <div class="section-label reveal">Our Products</div>
-          <h2 class="section-title reveal">Everything your<br>customers reach for.</h2>
+          <h2 class="section-title reveal">High-demand brands<br>your customers want.</h2>
         </div>
-        <p class="section-sub reveal" style="text-align:right;max-width:340px;">Locally sourced, consistently fresh. Our full line covers the dairy staples that drive repeat foot traffic.</p>
+        <p class="section-sub reveal" style="text-align:right;max-width:340px;">Clinically studied focus capsules, energy shots, and gummies — the fast-moving supplement SKUs driving repeat foot traffic in c-stores and smoke shops.</p>
       </div>
       <div class="products-grid" id="products-grid"></div>
     </div>
@@ -289,11 +289,11 @@
         <div class="why-left reveal">
           <div class="section-label">Why WowCow</div>
           <h2 class="section-title">Built for high-volume<br>retail partners.</h2>
-          <p class="section-sub">We're not a grocery chain — we're your direct line to premium dairy with the pricing, flexibility, and support that independent retailers need.</p>
+          <p class="section-sub">We're not a big-box chain — we're your direct line to premium energy and focus supplement brands, with the pricing tiers, flexibility, and support that independent retailers need.</p>
           <div class="why-features">
             <div class="why-feature">
               <div class="why-feature-icon">🚚</div>
-              <div class="why-feature-text"><h4>Fast, Reliable Delivery</h4><p>Most orders fulfilled within 48 hours. Route-optimized distribution straight to your location.</p></div>
+              <div class="why-feature-text"><h4>Fast, Reliable Delivery</h4><p>Most orders fulfilled within 48 hours. Direct distribution straight to your location.</p></div>
             </div>
             <div class="why-feature">
               <div class="why-feature-icon">💰</div>
@@ -366,16 +366,15 @@
             </div>
             <span class="footer-logo-text">Wow<span>Cow</span></span>
           </div>
-          <p>Premium dairy distribution for independent retailers. Fresh product, fair pricing, fast delivery.</p>
+          <p>Premium energy and focus supplement distribution for independent retailers. Top brands, fair pricing, fast delivery.</p>
         </div>
         <div class="footer-links">
           <h4>Products</h4>
           <ul>
-            <li><a href="#products">Whole Milk</a></li>
-            <li><a href="#products">2% Milk</a></li>
-            <li><a href="#products">Heavy Cream</a></li>
-            <li><a href="#products">Butter &amp; Cheese</a></li>
-            <li><a href="#products">Greek Yogurt</a></li>
+            <li><a href="#products">ADDY Focus Capsules</a></li>
+            <li><a href="#products">ADDY Energy Shots</a></li>
+            <li><a href="#products">ADDY Gummies</a></li>
+            <li><a href="#products">More Brands</a></li>
           </ul>
         </div>
         <div class="footer-links">
@@ -397,7 +396,7 @@
       </div>
       <div class="footer-bottom">
         <p>© 2025 WowCow Distribution. All rights reserved.</p>
-        <p>Fresh from the farm. Straight to your shelves.</p>
+        <p>Fuel your shelves. Powered by demand.</p>
       </div>
     </div>
   </footer>
@@ -425,12 +424,11 @@
 
     // Products
     const products = [
-      { name:'WowCow Whole Milk 1 Gallon', desc:'Fresh whole milk, locally sourced. The everyday staple your customers count on.', tag:'Milk', img:'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600', delay:0 },
-      { name:'WowCow 2% Reduced Fat Milk 1 Gallon', desc:'Reduced fat milk with great taste. High turnover and consistent demand year-round.', tag:'Milk', img:'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=600', delay:80 },
-      { name:'WowCow Heavy Cream 1 Pint', desc:'Rich heavy cream for cooking and baking. A premium add-on that moves fast in food-adjacent stores.', tag:'Cream', img:'https://images.unsplash.com/photo-1587657566382-7c9b1a1c9459?w=600', delay:160 },
-      { name:'WowCow Butter Unsalted 1 lb', desc:'Premium unsalted butter. High-margin, high-demand — a refrigerated section must-have.', tag:'Butter', img:'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=600', delay:240 },
-      { name:'WowCow Cheddar Cheese Block 2 lb', desc:'Sharp cheddar cheese block. Strong repeat purchase rate and excellent shelf visibility.', tag:'Cheese', img:'https://images.unsplash.com/photo-1618164436241-4473940d1f5c?w=600', delay:320 },
-      { name:'WowCow Greek Yogurt 32 oz', desc:'Thick and creamy Greek yogurt. Targets health-conscious shoppers and drives basket size.', tag:'Yogurt', img:'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600', delay:400 },
+      { name:'ADDY Focus Capsules — 15ct', desc:'Clinically studied whole green coffee powder (WGCP) capsules. Sustained focus and energy with no crash. High-impulse sell at checkout.', tag:'Focus Caps', img:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=600', delay:0 },
+      { name:'ADDY Focus Capsules — 60ct', desc:'The full-size bottle for repeat customers. Same WGCP formula, better per-unit margin. Strong re-order velocity.', tag:'Focus Caps', img:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600', delay:80 },
+      { name:'ADDY Energy Shot — Blue Razz', desc:'Single-serve energy shot in Blue Raspberry. All-natural, no crash. Ideal placement near registers and cooler doors.', tag:'Energy Shot', img:'https://images.unsplash.com/photo-1622543925917-763c34d1a86e?w=600', delay:160 },
+      { name:'ADDY Energy Shot — Strawberry', desc:'Single-serve energy shot in Strawberry. Clean energy formula — the same trusted ADDY brand your customers already know.', tag:'Energy Shot', img:'https://images.unsplash.com/photo-1534353436294-0dbd4bdac845?w=600', delay:240 },
+      { name:'ADDY Energy Gummies', desc:'Chewable energy and focus gummies. Great for customers who prefer a no-pill format. Strong crossover appeal with the capsule line.', tag:'Gummies', img:'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=600', delay:320 },
     ];
 
     const grid = document.getElementById('products-grid');

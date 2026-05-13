@@ -478,7 +478,7 @@ app.post('/api/users', authenticate, authorize('admin'), async (req, res) => {
 });
 
 app.get('/api/users', authenticate, authorize('admin'), async (req, res) => {
-  try { res.json(await all('SELECT id,email,name,phone,role,status FROM users ORDER BY role,name')); }
+  try { res.json(await all('SELECT id,email,name,phone,role,status,pricing_tier FROM users ORDER BY role,name')); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -533,6 +533,8 @@ async function applyPricingTier(userId, tier, customPrices) {
       );
     }
   }
+  // Persist the tier name on the user so it can be displayed in the admin UI
+  await q('UPDATE users SET pricing_tier=$1 WHERE id=$2', [tier, userId]);
 }
 
 app.patch('/api/users/:id/pricing', authenticate, authorize('admin'), async (req, res) => {

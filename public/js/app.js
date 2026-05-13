@@ -32,7 +32,7 @@ function logout() {
         Until next time.
       </h1>
       <p style="font-size:17px;color:#64748b;max-width:400px;line-height:1.65;margin:0 auto;">
-        Your session has ended. Fresh product and fair pricing will be here when you return.
+        Your session has ended. Your products and pricing will be here when you return.
       </p>
       <div style="margin-top:48px;display:flex;align-items:center;gap:10px;justify-content:center;opacity:0.4;" id="farewell-loader">
         <div style="width:5px;height:5px;background:#3b82f6;border-radius:50%;animation:farewell-dot 1.2s ease-in-out infinite 0s;"></div>
@@ -1479,10 +1479,17 @@ async function loadUsersTab() {
   const users = await apiFetch('/api/users');
   const tbody = document.getElementById('users-tbody');
   if (!users || users.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted);">No users yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">No users yet</td></tr>';
     return;
   }
   const roleLabels = { admin: 'Admin', investor: 'Investor', store_owner: 'Wholesaler', distributor: 'Distributor', rep: 'Rep' };
+  const tierLabels = {
+    master_distributor: 'Master Dist.',
+    distributor: 'Distributor',
+    rep: 'Sales Rep',
+    store_owner: 'Wholesale',
+    custom: 'Custom'
+  };
   const tierableRoles = ['store_owner', 'distributor', 'rep'];
   tbody.innerHTML = users.map(u => `
     <tr>
@@ -1491,6 +1498,12 @@ async function loadUsersTab() {
       <td><span class="role-badge ${u.role}" style="font-size:11px;">${roleLabels[u.role] || u.role}</span></td>
       <td>${esc(u.phone || '—')}</td>
       <td><span class="status-badge ${u.status}">${u.status}</span></td>
+      <td>
+        ${u.pricing_tier
+          ? `<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:var(--accent-bg);color:var(--accent);">${tierLabels[u.pricing_tier] || u.pricing_tier}</span>`
+          : `<span style="font-size:12px;color:var(--text-muted);">—</span>`
+        }
+      </td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           ${u.status === 'active'
@@ -1848,13 +1861,13 @@ function renderInventoryStores() {
       <div class="table-card" style="margin-bottom:16px;">
         <div class="table-toolbar">
           <div>
-            <h2 style="margin:0 0 2px;"><span class="status-dot ${store.items.every(i=>!i.is_low)?'active':'inactive'}"></span>${esc(store.name)}</h2>
+            <h2 style="margin:0 0 2px;"><span id="inv-dot-${store.id}" class="status-dot ${store.items.every(i=>!i.is_low)?'active':'inactive'}"></span>${esc(store.name)}</h2>
             <p style="font-size:12px;color:var(--text-muted);margin:0;">${esc(store.city||'')}${store.city?', ':''}${esc(store.state||'')}</p>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
-            ${lowItems.length > 0
+            <span id="inv-low-indicator-${store.id}">${lowItems.length > 0
               ? `<span style="font-size:12px;font-weight:600;color:#dc2626;">⚠ ${lowItems.length} low</span>`
-              : `<span style="font-size:12px;color:#16a34a;">✓ All stocked</span>`}
+              : `<span style="font-size:12px;color:#16a34a;">✓ All stocked</span>`}</span>
             <a href="/shop.html?store_id=${store.id}" style="padding:6px 14px;background:#2563eb;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">🛒 Order</a>
           </div>
         </div>
@@ -1863,7 +1876,7 @@ function renderInventoryStores() {
             <thead><tr><th>Product</th><th>SKU</th><th>In Stock</th><th>Low Stock Threshold</th><th>Status</th>${isAdmin ? '<th>Save</th>' : ''}</tr></thead>
             <tbody>
               ${sortedItems.length ? sortedItems.map(item => `
-                <tr style="${item.is_low ? 'background:rgba(239,68,68,0.04);' : ''}">
+                <tr id="inv-row-${store.id}-${item.product_id}" style="${item.is_low ? 'background:rgba(239,68,68,0.04);' : ''}">
                   <td style="font-weight:500">${esc(item.product_name)}</td>
                   <td style="font-size:12px;color:var(--text-muted)">${esc(item.sku||'—')}</td>
                   <td style="font-weight:600;">
@@ -1885,7 +1898,7 @@ function renderInventoryStores() {
                     }
                   </td>
                   <td id="inv-status-${store.id}-${item.product_id}">${item.quantity === 0
-                    ? '<span class="status-badge inactive">🔴 Out of Stock</span>'
+                    ? '<span class="status-badge inactive"><span style="filter:hue-rotate(315deg) saturate(4) brightness(0.85);">⚠</span> Out of Stock</span>'
                     : item.is_low
                       ? '<span class="status-badge pending">⚠ Low Stock</span>'
                       : '<span class="status-badge active">✓ In Stock</span>'
@@ -1901,7 +1914,6 @@ function renderInventoryStores() {
         </div>
       </div>`;
   }).join('');
-
 }
 
 function inventorySearch(val) {
@@ -1959,10 +1971,17 @@ async function saveInventoryRow(storeId, productId) {
     if (statusEl) {
       const isLow = quantity <= low_stock_threshold;
       statusEl.innerHTML = quantity === 0
-        ? '<span class="status-badge inactive">🔴 Out of Stock</span>'
+        ? '<span class="status-badge inactive"><span style="filter:hue-rotate(315deg) saturate(4) brightness(0.85);">⚠</span> Out of Stock</span>'
         : isLow
           ? '<span class="status-badge pending">⚠ Low Stock</span>'
           : '<span class="status-badge active">✓ In Stock</span>';
+    }
+
+    // Clear/set row background immediately
+    const rowEl = document.getElementById(`inv-row-${storeId}-${productId}`);
+    if (rowEl) {
+      const isLow = quantity <= low_stock_threshold;
+      rowEl.style.background = (isLow || quantity === 0) ? 'rgba(239,68,68,0.04)' : '';
     }
 
     // Update local data so re-sorts work correctly
@@ -1972,6 +1991,20 @@ async function saveInventoryRow(storeId, productId) {
         row.low_stock_threshold = low_stock_threshold;
         row.is_low = quantity <= low_stock_threshold ? 1 : 0;
       }
+    }
+
+    // Update store-level dot and low indicator based on updated data
+    const storeItems = _inventoryData.filter(r => r.store_id === storeId);
+    const lowCount = storeItems.filter(r => r.is_low).length;
+    const dotEl = document.getElementById(`inv-dot-${storeId}`);
+    if (dotEl) {
+      dotEl.className = `status-dot ${lowCount === 0 ? 'active' : 'inactive'}`;
+    }
+    const indicatorEl = document.getElementById(`inv-low-indicator-${storeId}`);
+    if (indicatorEl) {
+      indicatorEl.innerHTML = lowCount > 0
+        ? `<span style="font-size:12px;font-weight:600;color:#dc2626;">⚠ ${lowCount} low</span>`
+        : `<span style="font-size:12px;color:#16a34a;">✓ All stocked</span>`;
     }
     showToast('Inventory updated', 'success');
   } else {
@@ -1997,7 +2030,7 @@ async function loadNotifEmails() {
   }
 
   list.innerHTML = emails.map(e => `
-    <div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
       <div style="width:36px;height:36px;background:var(--accent-bg);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">📧</div>
       <div style="flex:1;min-width:0;">
         <div style="font-size:14px;font-weight:600;color:var(--text);">${esc(e.email)}</div>

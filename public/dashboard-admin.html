@@ -179,10 +179,10 @@
             <table>
               <thead>
                 <tr>
-                  <th>Name</th><th>Email</th><th>Role</th><th>Phone</th><th>Status</th><th>Actions</th>
+                  <th>Name</th><th>Email</th><th>Role</th><th>Phone</th><th>Status</th><th>Tier</th><th>Actions</th>
                 </tr>
               </thead>
-              <tbody id="users-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+              <tbody id="users-tbody"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -249,19 +249,19 @@
               <p style="font-size:13px;color:var(--text-secondary);margin:0;">Every new order and account request will be sent to all addresses listed here simultaneously.</p>
             </div>
           </div>
-          <div style="padding:0 0 16px;">
-            <div id="notif-emails-list" style="margin-bottom:20px;min-height:40px;"></div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:0 4px;">
+          <div style="padding:0 24px 20px;">
+            <div id="notif-emails-list" style="margin-bottom:16px;min-height:40px;"></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
               <div style="flex:1;min-width:200px;">
                 <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Email Address</label>
                 <input type="email" id="notif-email-input" placeholder="someone@example.com"
-                  style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:14px;"
+                  style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:14px;box-sizing:border-box;"
                   onkeydown="if(event.key==='Enter')addNotifEmail()">
               </div>
               <div style="width:160px;">
                 <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Label (optional)</label>
                 <input type="text" id="notif-label-input" placeholder="e.g. Operations"
-                  style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:14px;"
+                  style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:14px;box-sizing:border-box;"
                   onkeydown="if(event.key==='Enter')addNotifEmail()">
               </div>
               <button class="btn btn-sm btn-green" onclick="addNotifEmail()" style="height:40px;white-space:nowrap;padding:0 18px;">+ Add Email</button>
@@ -309,7 +309,7 @@
       <h2 id="product-modal-title">Add Product</h2>
       <form onsubmit="handleProductSubmit(event)" id="product-form">
         <input type="hidden" id="product-id">
-        <div class="form-group"><label>Product Name</label><input type="text" id="pf-name" required placeholder="e.g. WowCow Whole Milk 1 Gallon"></div>
+        <div class="form-group"><label>Product Name</label><input type="text" id="pf-name" required placeholder="e.g. ADDY Focus Capsules 15ct"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group"><label>SKU</label><input type="text" id="pf-sku" placeholder="WC-MILK-01"></div>
           <div class="form-group"><label>Stock Quantity</label><input type="number" id="pf-stock" value="0" min="0"></div>

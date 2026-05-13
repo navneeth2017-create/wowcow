@@ -26,17 +26,17 @@ async function loadProductsTab() {
       if (redProducts.length > 0) {
         html += `
           <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;">
-            <span style="font-size:20px;flex-shrink:0;">🔴</span>
+            <span style="font-size:20px;flex-shrink:0;filter:hue-rotate(315deg) saturate(4) brightness(0.85);">⚠️</span>
             <div>
               <span style="font-size:14px;font-weight:700;color:#dc2626;">
-                ${redProducts.length} product${redProducts.length>1?'s are':' is'} critically low (50 or under)
+                ${redProducts.length} product${redProducts.length>1?'s are':' is'} critically low
               </span>
               ${outOfStock.length > 0
                 ? `<div style="font-size:12px;color:#ef4444;margin-top:2px;">${outOfStock.length} item${outOfStock.length>1?'s':''} completely out of stock</div>`
                 : ''}
               <div style="font-size:12px;color:#f87171;margin-top:6px;line-height:1.8;">
                 ${redProducts.map(p => `<span style="display:inline-block;margin-right:14px;">
-                  ${esc(p.name)}: <strong>${p.stock === 0 ? '🔴 Out' : p.stock + ' left'}</strong>
+                  ${esc(p.name)}: <strong>${p.stock === 0 ? 'Out of Stock' : p.stock + ' left'}</strong>
                 </span>`).join('')}
               </div>
             </div>
@@ -49,7 +49,7 @@ async function loadProductsTab() {
             <span style="font-size:20px;flex-shrink:0;">⚠️</span>
             <div>
               <span style="font-size:14px;font-weight:700;color:#d97706;">
-                ${yellowProducts.length} product${yellowProducts.length>1?'s are':' is'} getting low (51–99)
+                ${yellowProducts.length} product${yellowProducts.length>1?'s are':' is'} getting low
               </span>
               <div style="font-size:12px;color:#f59e0b;margin-top:6px;line-height:1.8;">
                 ${yellowProducts.map(p => `<span style="display:inline-block;margin-right:14px;">

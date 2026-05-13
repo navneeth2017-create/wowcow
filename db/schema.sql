@@ -153,3 +153,6 @@ CREATE TABLE IF NOT EXISTS notification_emails (
   label TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migration: add pricing_tier to users if not already present
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pricing_tier TEXT;

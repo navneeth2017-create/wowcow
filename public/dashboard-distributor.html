@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WowCow - Distributor</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script>const saved=localStorage.getItem('dh_theme')||'light';document.documentElement.setAttribute('data-theme',saved);</script>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="topbar">
+      <div class="logo-mark" id="logo-container"></div>
+      <div class="user-info">
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></button>
+        <button class="btn-logout" onclick="showProfile()">Profile</button>
+        <span class="role-badge" id="user-role">Distributor</span>
+        <a href="/shop.html" style="padding:7px 16px;background:#2563eb;color:#fff;border-radius:7px;font-size:13px;font-weight:600;text-decoration:none;margin-right:8px;">🛒 Shop</a><button class="btn-logout" onclick="logout()">Sign Out</button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div style="display:flex;gap:8px;margin-bottom:24px;border-bottom:1px solid var(--border);">
+        <button class="admin-tab active" onclick="switchMyTab('main',this)">My Stores</button>
+        <button class="admin-tab" onclick="switchMyTab('orders',this)">My Orders</button>
+        <button class="admin-tab" onclick="switchMyTab('inventory',this)">Inventory</button>
+      </div>
+      <div id="my-tab-main">
+      <div class="page-header">
+        <div>
+          <h1>My Assigned Stores</h1>
+          <p>Your distribution territory and pricing details</p>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Assigned Stores</div><div class="stat-value" id="stat-total">--</div></div>
+        <div class="stat-card"><div class="stat-label">Total Distribution Cost</div><div class="stat-value revenue" id="stat-dist-cost">--</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Wholesale Price</div><div class="stat-value" id="stat-avg-wholesale">--</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Retail Price</div><div class="stat-value" id="stat-avg-retail">--</div></div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-toolbar">
+          <h2>Store Directory</h2>
+          <div class="toolbar-controls">
+            <input type="text" class="search-input" id="search-input" placeholder="Search stores..." oninput="filterStores(this.value)">
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Store Name</th>
+                <th>Owner</th>
+                <th>City</th>
+                <th>State</th>
+                <th>Category</th>
+                <th>Wholesale Price</th>
+                <th>Retail Price</th>
+                <th>Distribution Cost</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="stores-tbody">
+              <tr><td colspan="9" class="loading">Loading stores...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      </div><!-- end my-tab-main -->
+      <div id="my-tab-orders" style="display:none;">
+        <div class="page-header"><div><h1>My Orders</h1><p>Your order history</p></div></div>
+        <div class="table-card">
+          <div class="table-toolbar"><h2>Order History</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order #</th><th>Date</th><th>For Store</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead>
+              <tbody id="my-orders-tbody"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="my-tab-inventory" style="display:none;">
+        <div class="page-header"><div><h1>Store Inventory</h1><p>Track product levels across your assigned stores</p></div></div>
+        <div id="inventory-content"><div class="loading" style="padding:40px;text-align:center;">Loading inventory...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Order Detail Modal -->
+  <div class="modal-overlay" id="my-order-detail-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:580px;">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Order Details</h2>
+      <div class="order-detail-body"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="profile-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Change Password</h2>
+      <form onsubmit="handleChangePassword(event)">
+        <div class="form-group"><label>Current Password</label><input type="password" name="current_password" required></div>
+        <div class="form-group"><label>New Password</label><input type="password" name="new_password" required minlength="6"></div>
+        <div class="form-group"><label>Confirm New Password</label><input type="password" name="confirm_password" required minlength="6"></div>
+        <button type="submit" class="btn">Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>loadDistributorDashboard();</script>
+</body>
+</html>

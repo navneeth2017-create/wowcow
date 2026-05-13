@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WowCow Distribution — Premium Dairy Products</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --blue: #2563eb; --blue-dark: #1d4ed8; --blue-light: #eff6ff;
+      --navy: #0f172a; --navy-mid: #1e293b;
+      --text: #1a1a1a; --text-secondary: #64748b; --text-muted: #94a3b8;
+      --border: #e2e8f0; --white: #ffffff; --cream: #fafaf8; --green: #059669;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--white); color: var(--text); overflow-x: hidden; }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 0 48px; height: 68px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(16px);
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    nav.scrolled { border-color: var(--border); background: rgba(255,255,255,0.97); }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-logo-icon {
+      width: 36px; height: 36px; background: var(--blue); border-radius: 9px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .nav-logo-icon svg { width: 20px; height: 20px; }
+    .nav-logo-text { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+    .nav-logo-text span { color: var(--blue); }
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+    .btn-nav-login {
+      padding: 9px 20px; border: 1.5px solid var(--border); border-radius: 8px;
+      background: transparent; color: var(--text); font-family: inherit; font-size: 14px;
+      font-weight: 600; cursor: pointer; text-decoration: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .btn-nav-login:hover { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
+    .btn-nav-signup {
+      padding: 9px 20px; border: none; border-radius: 8px; background: var(--blue);
+      color: #fff; font-family: inherit; font-size: 14px; font-weight: 600;
+      cursor: pointer; text-decoration: none; transition: background 0.2s, transform 0.15s;
+      box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+    }
+    .btn-nav-signup:hover { background: var(--blue-dark); transform: translateY(-1px); }
+
+    /* HERO */
+    .hero {
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 120px 24px 80px;
+      background: var(--cream); position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px; opacity: 0.45; pointer-events: none;
+    }
+    .hero::after {
+      content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+      width: 700px; height: 700px;
+      background: radial-gradient(circle, rgba(37,99,235,0.11) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--blue-light); border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 100px; padding: 6px 16px;
+      font-size: 13px; font-weight: 600; color: var(--blue);
+      margin-bottom: 28px; position: relative; z-index: 1;
+      opacity: 0; animation: fadeUp 0.6s ease forwards 0.1s;
+    }
+    .hero-eyebrow::before { content: ''; width: 7px; height: 7px; background: var(--blue); border-radius: 50%; }
+    .hero-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(44px, 7vw, 80px); font-weight: 800;
+      color: var(--navy); line-height: 1.08; letter-spacing: -1.5px;
+      max-width: 760px; position: relative; z-index: 1;
+      opacity: 0; animation: fadeUp 0.7s ease forwards 0.2s;
+    }
+    .hero-title .blue { color: var(--blue); }
+    .hero-sub {
+      margin-top: 24px; font-size: 18px; color: var(--text-secondary);
+      max-width: 520px; line-height: 1.65; position: relative; z-index: 1;
+      opacity: 0; animation: fadeUp 0.7s ease forwards 0.35s;
+    }
+    .hero-cta {
+      display: flex; gap: 14px; margin-top: 40px; flex-wrap: wrap;
+      justify-content: center; position: relative; z-index: 1;
+      opacity: 0; animation: fadeUp 0.7s ease forwards 0.5s;
+    }
+    .btn-primary {
+      padding: 14px 32px; background: var(--blue); color: #fff;
+      border: none; border-radius: 10px; font-family: inherit;
+      font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 4px 16px rgba(37,99,235,0.3);
+    }
+    .btn-primary:hover { background: var(--blue-dark); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37,99,235,0.4); }
+    .btn-secondary {
+      padding: 14px 32px; background: transparent; color: var(--text);
+      border: 1.5px solid var(--border); border-radius: 10px; font-family: inherit;
+      font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
+    .hero-stats {
+      display: flex; gap: 48px; margin-top: 64px;
+      position: relative; z-index: 1;
+      opacity: 0; animation: fadeUp 0.7s ease forwards 0.65s;
+    }
+    .hero-stat { text-align: center; }
+    .hero-stat-value { font-family: 'Playfair Display', serif; font-size: 36px; font-weight: 800; color: var(--navy); line-height: 1; }
+    .hero-stat-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; font-weight: 500; }
+    .hero-stat-divider { width: 1px; background: var(--border); align-self: stretch; }
+
+    /* SECTION */
+    .section { padding: 100px 24px; }
+    .section-inner { max-width: 1100px; margin: 0 auto; }
+    .section-label { font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--blue); margin-bottom: 14px; }
+    .section-title { font-family: 'Playfair Display', serif; font-size: clamp(32px, 4vw, 48px); font-weight: 800; color: var(--navy); line-height: 1.15; letter-spacing: -0.5px; margin-bottom: 16px; }
+    .section-sub { font-size: 17px; color: var(--text-secondary); max-width: 520px; line-height: 1.6; }
+
+    /* PRODUCTS */
+    .products-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 56px; gap: 24px; flex-wrap: wrap; }
+    .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+    .product-card {
+      border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+      background: var(--white); transition: box-shadow 0.25s, transform 0.25s;
+      opacity: 0; animation: fadeUp 0.6s ease forwards;
+    }
+    .product-card:hover { box-shadow: 0 12px 40px rgba(0,0,0,0.1); transform: translateY(-4px); }
+    .product-img-wrap {
+      width: 100%; height: 200px; background: var(--cream);
+      overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center;
+    }
+    .product-img-wrap img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
+    .product-card:hover .product-img-wrap img { transform: scale(1.04); }
+    .product-img-fallback { font-size: 56px; opacity: 0.3; }
+    .product-body { padding: 20px 22px 24px; }
+    .product-tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--blue); background: var(--blue-light); border-radius: 4px; padding: 3px 8px; margin-bottom: 10px; }
+    .product-name { font-size: 16px; font-weight: 700; color: var(--navy); line-height: 1.3; margin-bottom: 8px; }
+    .product-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 16px; }
+    .product-cta { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--blue); text-decoration: none; cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; }
+    .product-cta svg { width: 14px; height: 14px; transition: transform 0.2s; }
+    .product-card:hover .product-cta svg { transform: translateX(3px); }
+
+    /* WHY */
+    .why-section { background: var(--navy); position: relative; overflow: hidden; }
+    .why-section::before { content: ''; position: absolute; top: -200px; right: -200px; width: 600px; height: 600px; background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%); pointer-events: none; }
+    .why-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+    .why-left .section-label { color: #60a5fa; }
+    .why-left .section-title { color: var(--white); }
+    .why-left .section-sub { color: #94a3b8; }
+    .why-features { display: flex; flex-direction: column; gap: 28px; margin-top: 44px; }
+    .why-feature { display: flex; gap: 16px; align-items: flex-start; }
+    .why-feature-icon { width: 44px; height: 44px; background: rgba(37,99,235,0.2); border: 1px solid rgba(37,99,235,0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 20px; }
+    .why-feature-text h4 { font-size: 15px; font-weight: 700; color: var(--white); margin-bottom: 4px; }
+    .why-feature-text p { font-size: 13px; color: #94a3b8; line-height: 1.55; }
+    .why-right { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .why-stat-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 28px 24px; }
+    .why-stat-card:nth-child(2), .why-stat-card:nth-child(4) { margin-top: 28px; }
+    .why-stat-num { font-family: 'Playfair Display', serif; font-size: 40px; font-weight: 800; color: var(--white); line-height: 1; margin-bottom: 8px; }
+    .why-stat-num span { color: #60a5fa; }
+    .why-stat-label { font-size: 13px; color: #64748b; font-weight: 500; line-height: 1.4; }
+
+    /* HOW */
+    .how-section { background: var(--cream); }
+    .how-header { text-align: center; margin-bottom: 64px; }
+    .how-header .section-sub { margin: 0 auto; }
+    .how-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; position: relative; }
+    .how-steps::before { content: ''; position: absolute; top: 28px; left: calc(16.66% + 20px); right: calc(16.66% + 20px); height: 1px; background: linear-gradient(90deg, var(--border), var(--blue), var(--border)); pointer-events: none; }
+    .how-step { text-align: center; padding: 0 16px; }
+    .how-step-num { width: 56px; height: 56px; background: var(--white); border: 2px solid var(--blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 800; color: var(--blue); position: relative; z-index: 1; }
+    .how-step h3 { font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
+    .how-step p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+    /* CTA BAND */
+    .cta-band { background: var(--blue); padding: 80px 24px; text-align: center; position: relative; overflow: hidden; }
+    .cta-band::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 40px 40px; }
+    .cta-band-inner { position: relative; z-index: 1; max-width: 600px; margin: 0 auto; }
+    .cta-band h2 { font-family: 'Playfair Display', serif; font-size: clamp(32px, 4vw, 48px); font-weight: 800; color: #fff; margin-bottom: 16px; line-height: 1.15; }
+    .cta-band p { font-size: 17px; color: rgba(255,255,255,0.75); margin-bottom: 36px; line-height: 1.6; }
+    .cta-band-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn-white { padding: 14px 32px; background: #fff; color: var(--blue); border: none; border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; transition: transform 0.15s, box-shadow 0.2s; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+    .btn-white:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+    .btn-outline-white { padding: 14px 32px; background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.4); border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; transition: border-color 0.2s, background 0.2s; }
+    .btn-outline-white:hover { border-color: #fff; background: rgba(255,255,255,0.1); }
+
+    /* FOOTER */
+    footer { background: var(--navy); padding: 60px 24px 36px; color: #94a3b8; }
+    .footer-inner { max-width: 1100px; margin: 0 auto; }
+    .footer-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 40px; flex-wrap: wrap; margin-bottom: 48px; padding-bottom: 48px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .footer-brand p { margin-top: 12px; font-size: 14px; line-height: 1.6; max-width: 280px; color: #64748b; }
+    .footer-logo-text { font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+    .footer-logo-text span { color: #60a5fa; }
+    .footer-links h4 { font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 16px; letter-spacing: 0.5px; }
+    .footer-links ul { list-style: none; }
+    .footer-links li { margin-bottom: 10px; }
+    .footer-links a { font-size: 14px; color: #64748b; text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: #fff; }
+    .footer-bottom { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .footer-bottom p { font-size: 13px; color: #334155; }
+
+    /* ANIMATIONS */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      nav { padding: 0 20px; }
+      .hero-stats { gap: 28px; flex-wrap: wrap; justify-content: center; }
+      .why-grid { grid-template-columns: 1fr; gap: 48px; }
+      .how-steps { grid-template-columns: 1fr; }
+      .how-steps::before { display: none; }
+      .footer-top { flex-direction: column; }
+    }
+    @media (max-width: 480px) {
+      .hero-stats { flex-direction: column; gap: 20px; }
+      .hero-stat-divider { display: none; }
+      .products-header { flex-direction: column; }
+      .products-header .section-sub { text-align: left !important; max-width: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav id="nav">
+    <a href="/index.html" class="nav-logo">
+      <div class="nav-logo-icon">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="2" fill="none"/>
+          <path d="M2 7L12 12M12 12L22 7M12 12V22" stroke="white" stroke-width="2"/>
+          <path d="M7 4.5L17 9.5" stroke="white" stroke-width="1.5" opacity="0.5"/>
+        </svg>
+      </div>
+      <span class="nav-logo-text">Wow<span>Cow</span></span>
+    </a>
+    <div class="nav-actions">
+      <a href="/login.html" class="btn-nav-login">Log In</a>
+      <a href="/login.html" class="btn-nav-signup" id="signup-btn">Sign Up</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-eyebrow">Premium Dairy Distribution</div>
+    <h1 class="hero-title">Fresh from the farm.<br><span class="blue">Straight to your shelves.</span></h1>
+    <p class="hero-sub">WowCow partners with convenience stores, smoke shops, and independent retailers to deliver premium dairy products at competitive wholesale prices — reliably, every time.</p>
+    <div class="hero-cta">
+      <a href="/login.html" id="hero-signup-btn" class="btn-primary">Become a Partner</a>
+      <a href="#products" class="btn-secondary">View Our Products</a>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="hero-stat-value">200+</div><div class="hero-stat-label">Partner Stores</div></div>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat"><div class="hero-stat-value">6</div><div class="hero-stat-label">Core Products</div></div>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat"><div class="hero-stat-value">48h</div><div class="hero-stat-label">Avg Delivery</div></div>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat"><div class="hero-stat-value">Net&nbsp;30</div><div class="hero-stat-label">Payment Terms</div></div>
+    </div>
+  </section>
+
+  <section class="section" id="products" style="background:var(--white);">
+    <div class="section-inner">
+      <div class="products-header">
+        <div>
+          <div class="section-label reveal">Our Products</div>
+          <h2 class="section-title reveal">Everything your<br>customers reach for.</h2>
+        </div>
+        <p class="section-sub reveal" style="text-align:right;max-width:340px;">Locally sourced, consistently fresh. Our full line covers the dairy staples that drive repeat foot traffic.</p>
+      </div>
+      <div class="products-grid" id="products-grid"></div>
+    </div>
+  </section>
+
+  <section class="section why-section" id="why">
+    <div class="section-inner">
+      <div class="why-grid">
+        <div class="why-left reveal">
+          <div class="section-label">Why WowCow</div>
+          <h2 class="section-title">Built for high-volume<br>retail partners.</h2>
+          <p class="section-sub">We're not a grocery chain — we're your direct line to premium dairy with the pricing, flexibility, and support that independent retailers need.</p>
+          <div class="why-features">
+            <div class="why-feature">
+              <div class="why-feature-icon">🚚</div>
+              <div class="why-feature-text"><h4>Fast, Reliable Delivery</h4><p>Most orders fulfilled within 48 hours. Route-optimized distribution straight to your location.</p></div>
+            </div>
+            <div class="why-feature">
+              <div class="why-feature-icon">💰</div>
+              <div class="why-feature-text"><h4>Flexible Pricing Tiers</h4><p>Volume-based pricing for distributors, reps, and store owners. Net-30 invoicing available.</p></div>
+            </div>
+            <div class="why-feature">
+              <div class="why-feature-icon">📊</div>
+              <div class="why-feature-text"><h4>Partner Dashboard</h4><p>Track orders, monitor inventory levels, and reorder in minutes from your dedicated portal.</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="why-right reveal">
+          <div class="why-stat-card"><div class="why-stat-num">15<span>+</span></div><div class="why-stat-label">Product categories served across the network</div></div>
+          <div class="why-stat-card"><div class="why-stat-num">$0</div><div class="why-stat-label">Minimum order on invoice — no lock-in</div></div>
+          <div class="why-stat-card"><div class="why-stat-num">99<span>%</span></div><div class="why-stat-label">On-time delivery rate across active routes</div></div>
+          <div class="why-stat-card"><div class="why-stat-num">24<span>h</span></div><div class="why-stat-label">Account setup from sign-up to first order</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section how-section" id="how">
+    <div class="section-inner">
+      <div class="how-header">
+        <div class="section-label reveal" style="text-align:center;">How It Works</div>
+        <h2 class="section-title reveal" style="text-align:center;">Up and running in three steps.</h2>
+        <p class="section-sub reveal" style="text-align:center;margin:0 auto;">No complicated onboarding. Simple so you can focus on running your store.</p>
+      </div>
+      <div class="how-steps">
+        <div class="how-step reveal">
+          <div class="how-step-num">1</div>
+          <h3>Apply for a Partner Account</h3>
+          <p>Fill out a quick sign-up form. Our team reviews and approves accounts within 24 hours.</p>
+        </div>
+        <div class="how-step reveal">
+          <div class="how-step-num">2</div>
+          <h3>Browse &amp; Place Your Order</h3>
+          <p>Log in to your dashboard, browse our catalog at your pricing tier, and place an order in minutes.</p>
+        </div>
+        <div class="how-step reveal">
+          <div class="how-step-num">3</div>
+          <h3>Receive &amp; Restock</h3>
+          <p>We handle delivery to your door. Track every shipment in real time through your partner portal.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-band">
+    <div class="cta-band-inner">
+      <h2>Ready to partner<br>with WowCow?</h2>
+      <p>Join hundreds of stores already moving product with us. Accounts are free and take less than 2 minutes to set up.</p>
+      <div class="cta-band-btns">
+        <a href="/login.html" id="cta-signup-btn" class="btn-white">Create a Free Account</a>
+        <a href="/login.html" class="btn-outline-white">Already a partner? Log in</a>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:0;">
+            <div class="nav-logo-icon" style="width:32px;height:32px;">
+              <svg viewBox="0 0 24 24" fill="none" style="width:17px;height:17px;">
+                <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="2" fill="none"/>
+                <path d="M2 7L12 12M12 12L22 7M12 12V22" stroke="white" stroke-width="2"/>
+              </svg>
+            </div>
+            <span class="footer-logo-text">Wow<span>Cow</span></span>
+          </div>
+          <p>Premium dairy distribution for independent retailers. Fresh product, fair pricing, fast delivery.</p>
+        </div>
+        <div class="footer-links">
+          <h4>Products</h4>
+          <ul>
+            <li><a href="#products">Whole Milk</a></li>
+            <li><a href="#products">2% Milk</a></li>
+            <li><a href="#products">Heavy Cream</a></li>
+            <li><a href="#products">Butter &amp; Cheese</a></li>
+            <li><a href="#products">Greek Yogurt</a></li>
+          </ul>
+        </div>
+        <div class="footer-links">
+          <h4>Partners</h4>
+          <ul>
+            <li><a href="/login.html">Become a Wholesaler</a></li>
+            <li><a href="/login.html">Become a Distributor</a></li>
+            <li><a href="/login.html">Join as a Rep</a></li>
+            <li><a href="/login.html">Partner Login</a></li>
+          </ul>
+        </div>
+        <div class="footer-links">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="#why">About WowCow</a></li>
+            <li><a href="#how">How It Works</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2025 WowCow Distribution. All rights reserved.</p>
+        <p>Fresh from the farm. Straight to your shelves.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Nav scroll effect
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 20));
+
+    // Scroll reveal
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Sign up buttons — pass a flag so login.html opens the signup form
+    ['signup-btn','hero-signup-btn','cta-signup-btn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', e => {
+        e.preventDefault();
+        sessionStorage.setItem('open_signup', '1');
+        window.location.href = '/login.html';
+      });
+    });
+
+    // Products
+    const products = [
+      { name:'WowCow Whole Milk 1 Gallon', desc:'Fresh whole milk, locally sourced. The everyday staple your customers count on.', tag:'Milk', img:'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600', delay:0 },
+      { name:'WowCow 2% Reduced Fat Milk 1 Gallon', desc:'Reduced fat milk with great taste. High turnover and consistent demand year-round.', tag:'Milk', img:'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=600', delay:80 },
+      { name:'WowCow Heavy Cream 1 Pint', desc:'Rich heavy cream for cooking and baking. A premium add-on that moves fast in food-adjacent stores.', tag:'Cream', img:'https://images.unsplash.com/photo-1587657566382-7c9b1a1c9459?w=600', delay:160 },
+      { name:'WowCow Butter Unsalted 1 lb', desc:'Premium unsalted butter. High-margin, high-demand — a refrigerated section must-have.', tag:'Butter', img:'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=600', delay:240 },
+      { name:'WowCow Cheddar Cheese Block 2 lb', desc:'Sharp cheddar cheese block. Strong repeat purchase rate and excellent shelf visibility.', tag:'Cheese', img:'https://images.unsplash.com/photo-1618164436241-4473940d1f5c?w=600', delay:320 },
+      { name:'WowCow Greek Yogurt 32 oz', desc:'Thick and creamy Greek yogurt. Targets health-conscious shoppers and drives basket size.', tag:'Yogurt', img:'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600', delay:400 },
+    ];
+
+    const grid = document.getElementById('products-grid');
+    grid.innerHTML = products.map(p => `
+      <div class="product-card" style="animation-delay:${p.delay}ms;">
+        <div class="product-img-wrap">
+          <img src="${p.img}" alt="${p.name}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=\\"product-img-fallback\\">📦</span>'">
+        </div>
+        <div class="product-body">
+          <span class="product-tag">${p.tag}</span>
+          <div class="product-name">${p.name}</div>
+          <div class="product-desc">${p.desc}</div>
+          <a href="/login.html" class="product-cta" onclick="sessionStorage.setItem('open_signup','1')">
+            Inquire about pricing
+            <svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+        </div>
+      </div>
+    `).join('');
+
+    document.querySelectorAll('.product-card').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>

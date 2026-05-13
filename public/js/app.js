@@ -1,0 +1,2048 @@
+const API = '';
+
+function getToken() { return localStorage.getItem('dh_token'); }
+function getRole() { return localStorage.getItem('dh_role'); }
+
+function logout() {
+  localStorage.removeItem('dh_token');
+  localStorage.removeItem('dh_role');
+
+  // Build farewell overlay
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:99999;
+    background:#0f172a;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    opacity:0;transition:opacity 0.5s ease;
+    font-family:'DM Sans',sans-serif;
+    text-align:center;padding:24px;
+  `;
+
+  overlay.innerHTML = `
+    <div id="farewell-inner" style="opacity:0;transform:translateY(16px);transition:opacity 0.7s ease 0.3s,transform 0.7s ease 0.3s;">
+      <div style="width:64px;height:64px;background:#2563eb;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 28px;">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="1.8" fill="none"/>
+          <path d="M2 7L12 12M12 12L22 7M12 12V22" stroke="white" stroke-width="1.8"/>
+          <path d="M7 4.5L17 9.5" stroke="white" stroke-width="1.4" opacity="0.5"/>
+        </svg>
+      </div>
+      <p style="font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#3b82f6;margin-bottom:18px;">WowCow Distribution</p>
+      <h1 style="font-family:'Playfair Display',Georgia,serif;font-size:clamp(36px,6vw,64px);font-weight:800;color:#ffffff;line-height:1.1;letter-spacing:-1px;margin-bottom:20px;">
+        Until next time.
+      </h1>
+      <p style="font-size:17px;color:#64748b;max-width:400px;line-height:1.65;margin:0 auto;">
+        Your session has ended. Fresh product and fair pricing will be here when you return.
+      </p>
+      <div style="margin-top:48px;display:flex;align-items:center;gap:10px;justify-content:center;opacity:0.4;" id="farewell-loader">
+        <div style="width:5px;height:5px;background:#3b82f6;border-radius:50%;animation:farewell-dot 1.2s ease-in-out infinite 0s;"></div>
+        <div style="width:5px;height:5px;background:#3b82f6;border-radius:50%;animation:farewell-dot 1.2s ease-in-out infinite 0.2s;"></div>
+        <div style="width:5px;height:5px;background:#3b82f6;border-radius:50%;animation:farewell-dot 1.2s ease-in-out infinite 0.4s;"></div>
+      </div>
+    </div>
+    <style>
+      @keyframes farewell-dot {
+        0%,80%,100% { transform:scale(0.6);opacity:0.3; }
+        40% { transform:scale(1);opacity:1; }
+      }
+    </style>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Fade in overlay
+  requestAnimationFrame(() => {
+    overlay.style.opacity = '1';
+    setTimeout(() => {
+      const inner = document.getElementById('farewell-inner');
+      if (inner) { inner.style.opacity = '1'; inner.style.transform = 'translateY(0)'; }
+    }, 100);
+  });
+
+  // Fade out and redirect after 2.8s
+  setTimeout(() => {
+    overlay.style.transition = 'opacity 0.8s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => { window.location.href = '/index.html'; }, 850);
+  }, 2800);
+}
+
+function requireAuth(allowedRoles) {
+  const token = getToken();
+  const role = getRole();
+  if (!token || !role) { window.location.href = '/login.html'; return false; }
+  if (allowedRoles && !allowedRoles.includes(role)) { window.location.href = '/login.html'; return false; }
+  return true;
+}
+
+async function apiFetch(url, options = {}) {
+  const token = getToken();
+  const res = await fetch(API + url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers }
+  });
+  if (res.status === 401) { logout(); return null; }
+  return res.json();
+}
+
+function formatCurrency(n) {
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function formatNumber(n) {
+  return Number(n).toLocaleString('en-US');
+}
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function timeAgo(dateStr) {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diff = Math.floor((now - date) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+// --- Logo ---
+const logoSVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="2" fill="none"/><path d="M2 7L12 12M12 12L22 7M12 12V22" stroke="white" stroke-width="2"/><path d="M7 4.5L17 9.5" stroke="white" stroke-width="1.5" opacity="0.5"/></svg>`;
+
+function renderLogo(container) {
+  if (!container) return;
+  const token = localStorage.getItem('dh_token');
+  const role = (token ? JSON.parse(atob(token.split('.')[1])).role : null);
+  const roleFileMap = { admin: 'admin', investor: 'investor', store_owner: 'owner', distributor: 'distributor', rep: 'rep' };
+  const dashFile = roleFileMap[role] || 'admin';
+  const href = token ? `/dashboard-${dashFile}.html?t=${token}` : '/login.html';
+  container.innerHTML = `<a href="${href}" style="display:flex;align-items:center;gap:10px;text-decoration:none;cursor:pointer;" title="Go to dashboard"><div class="logo-icon">${logoSVG}</div><span class="logo-text">Wow<span>Cow</span></span></a>`;
+}
+
+// --- Dark Mode ---
+function initTheme() {
+  const saved = localStorage.getItem('dh_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  updateThemeButton(saved);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('dh_theme', next);
+  updateThemeButton(next);
+}
+
+function updateThemeButton(theme) {
+  const btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
+}
+
+// --- Toast Notifications ---
+function showToast(message, type = 'success') {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  const icons = { success: '\u2713', error: '\u2717', info: '\u24D8' };
+  toast.innerHTML = `<span>${icons[type] || ''}</span><span>${message}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// --- Animated Counter ---
+function animateValue(el, end) {
+  if (!el) return;
+  const duration = 800;
+  const startTime = performance.now();
+  const endNum = Number(end);
+  function update(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = formatNumber(Math.round(endNum * eased));
+    if (progress < 1) requestAnimationFrame(update);
+    else el.textContent = formatNumber(endNum);
+  }
+  requestAnimationFrame(update);
+}
+
+function animateCurrency(el, end) {
+  if (!el) return;
+  const duration = 800;
+  const startTime = performance.now();
+  const endNum = Number(end);
+  function update(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = formatCurrency(Math.round(endNum * eased));
+    if (progress < 1) requestAnimationFrame(update);
+    else el.textContent = formatCurrency(endNum);
+  }
+  requestAnimationFrame(update);
+}
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+// --- Skeleton Loaders ---
+function renderSkeletonRows(tbody, cols, rows = 5) {
+  tbody.innerHTML = Array(rows).fill('').map(() =>
+    `<tr>${Array(cols).fill('').map((_, i) =>
+      `<td><div class="skeleton-cell" style="width:${60 + Math.random() * 40}%; height:16px;"></div></td>`
+    ).join('')}</tr>`
+  ).join('');
+}
+
+function renderSkeletonStats(ids) {
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="skeleton-stat"></div>';
+  });
+}
+
+// --- Session Timeout ---
+function initSessionTimeout() {
+  const token = getToken();
+  if (!token) return;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const expiry = payload.exp * 1000;
+    const warnAt = expiry - 5 * 60 * 1000;
+
+    const checkInterval = setInterval(() => {
+      const now = Date.now();
+      if (now >= expiry) {
+        clearInterval(checkInterval);
+        logout();
+      } else if (now >= warnAt) {
+        let warning = document.getElementById('session-warning');
+        if (!warning) {
+          warning = document.createElement('div');
+          warning.id = 'session-warning';
+          warning.className = 'session-warning active';
+          warning.textContent = 'Your session is expiring soon. Click here to sign in again.';
+          warning.onclick = logout;
+          document.body.prepend(warning);
+        }
+      }
+    }, 30000);
+  } catch {}
+}
+
+// --- Profile ---
+function showProfile() {
+  document.getElementById('profile-modal').classList.add('active');
+}
+
+async function handleChangePassword(e) {
+  e.preventDefault();
+  const form = e.target;
+  const current_password = form.current_password.value;
+  const new_password = form.new_password.value;
+  const confirm_password = form.confirm_password.value;
+
+  if (new_password !== confirm_password) {
+    showToast('Passwords do not match', 'error');
+    return;
+  }
+
+  const result = await apiFetch('/api/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ current_password, new_password })
+  });
+
+  if (result && result.success) {
+    showToast('Password updated successfully', 'success');
+    closeModal();
+    form.reset();
+  } else if (result && result.error) {
+    showToast(result.error, 'error');
+  }
+}
+
+// ==========================================
+// LOGIN
+// ==========================================
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const errorEl = document.getElementById('error-msg');
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Login failed';
+      errorEl.style.display = 'block';
+      return;
+    }
+    localStorage.setItem('dh_token', data.token);
+    localStorage.setItem('dh_role', data.role);
+    const t = data.token;
+    switch (data.role) {
+      case 'admin':       window.location.href = `/dashboard-admin.html?t=${t}`; break;
+      case 'investor':    window.location.href = `/dashboard-investor.html?t=${t}`; break;
+      case 'store_owner': window.location.href = `/dashboard-owner.html?t=${t}`; break;
+      case 'distributor': window.location.href = `/dashboard-distributor.html?t=${t}`; break;
+      case 'rep':         window.location.href = `/dashboard-rep.html?t=${t}`; break;
+      default:            window.location.href = `/dashboard-admin.html?t=${t}`;
+    }
+  } catch {
+    errorEl.textContent = 'Connection error';
+    errorEl.style.display = 'block';
+  }
+}
+
+// ==========================================
+// ADMIN DASHBOARD
+// ==========================================
+
+let adminState = { sort: 'name', order: 'asc', page: 1, search: '', category: '', state: '', status: '' };
+let selectedStores = new Set();
+
+async function loadAdminDashboard() {
+  if (!requireAuth(['admin'])) return;
+  window._userRole = 'admin';
+  initTheme();
+  initSessionTimeout();
+  document.getElementById('user-role').textContent = 'Admin';
+  document.getElementById('user-role').className = 'role-badge admin';
+  renderLogo(document.getElementById('logo-container'));
+
+  renderSkeletonStats(['stat-total', 'stat-revenue', 'stat-avg', 'stat-active']);
+
+  const filters = await apiFetch('/api/filters');
+  if (filters) {
+    const catSelect = document.getElementById('filter-category');
+    const stateSelect = document.getElementById('filter-state');
+    if (catSelect) catSelect.innerHTML = '<option value="">All Categories</option>' + filters.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (stateSelect) stateSelect.innerHTML = '<option value="">All States</option>' + filters.states.map(s => `<option value="${s}">${s}</option>`).join('');
+  }
+
+  await refreshAdminTable();
+  await loadActivityFeed();
+  await loadPendingBadge();
+  await checkLowStockBadge();
+  await checkNewOrdersBadge();
+}
+
+// --- Admin Activity Feed ---
+async function loadActivityFeed() {
+  const entries = await apiFetch('/api/activity?limit=10');
+  const container = document.getElementById('activity-list');
+  if (!container || !entries) return;
+
+  if (entries.length === 0) {
+    container.innerHTML = '<li class="activity-item" style="color:var(--text-muted)">No recent activity</li>';
+    return;
+  }
+
+  container.innerHTML = entries.map(e => {
+    const actionLabels = { created: 'Added', updated: 'Updated', deleted: 'Deleted', status_changed: 'Changed status of' };
+    return `
+      <li class="activity-item">
+        <span class="activity-dot ${e.action}"></span>
+        <span class="activity-text">${actionLabels[e.action] || e.action} <strong>${esc(e.target_name)}</strong></span>
+        <span class="activity-time">${timeAgo(e.created_at)}</span>
+      </li>
+    `;
+  }).join('');
+}
+
+// --- Store Detail Modal with Notes ---
+async function showStoreDetail(id) {
+  const [store, notes] = await Promise.all([
+    apiFetch(`/api/stores/${id}`),
+    apiFetch(`/api/stores/${id}/notes`)
+  ]);
+  if (!store) return;
+
+  const notesHtml = (notes || []).map(n => `
+    <div class="note-item">
+      <div class="note-text">${esc(n.note)}</div>
+      <div class="note-time">${timeAgo(n.created_at)}</div>
+    </div>
+  `).join('') || '<div style="color:var(--text-muted);font-size:13px;">No notes yet</div>';
+
+  document.getElementById('modal-content').innerHTML = `
+    <div class="detail-row"><span class="detail-label">Store Name</span><span class="detail-value">${esc(store.name)}</span></div>
+    <div class="detail-row"><span class="detail-label">Owner</span><span class="detail-value">${esc(store.owner_name)}</span></div>
+    <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${esc(store.email)}</span></div>
+    <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${esc(store.address)}, ${esc(store.city)}, ${esc(store.state)} ${esc(store.zip)}</span></div>
+    <div class="detail-row"><span class="detail-label">Category</span><span class="detail-value">${esc(store.category)}</span></div>
+    <div class="detail-row"><span class="detail-label">Revenue</span><span class="detail-value revenue">${formatCurrency(store.monthly_revenue)}/mo</span></div>
+    <div class="detail-row">
+      <span class="detail-label">Status</span>
+      <span class="detail-value">
+        <select class="filter-select" style="min-width:auto;padding:6px 10px;" onchange="changeStoreStatus(${store.id}, this.value)">
+          <option value="active" ${store.status==='active'?'selected':''}>Active</option>
+          <option value="pending" ${store.status==='pending'?'selected':''}>Pending</option>
+          <option value="inactive" ${store.status==='inactive'?'selected':''}>Inactive</option>
+        </select>
+      </span>
+    </div>
+    <div style="margin-top: 16px; display: flex; gap: 12px;">
+      <button class="btn btn-sm btn-danger" onclick="deleteStore(${store.id})">Delete Store</button>
+    </div>
+    <div class="notes-section">
+      <h3>Notes</h3>
+      ${notesHtml}
+      <div class="note-input-row">
+        <input type="text" id="note-input-${store.id}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote(${store.id})">
+        <button class="btn btn-sm" onclick="addNote(${store.id})">Add</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('store-modal').classList.add('active');
+}
+
+async function addNote(storeId) {
+  const input = document.getElementById(`note-input-${storeId}`);
+  if (!input || !input.value.trim()) return;
+  await apiFetch(`/api/stores/${storeId}/notes`, { method: 'POST', body: JSON.stringify({ note: input.value.trim() }) });
+  showToast('Note added', 'success');
+  showStoreDetail(storeId);
+}
+
+async function changeStoreStatus(id, status) {
+  await apiFetch(`/api/stores/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  showToast(`Status changed to ${status}`, 'info');
+  refreshAdminTable();
+  loadActivityFeed();
+}
+
+function closeModal() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+}
+
+function sortAdmin(field) {
+  if (adminState.sort === field) adminState.order = adminState.order === 'asc' ? 'desc' : 'asc';
+  else { adminState.sort = field; adminState.order = 'asc'; }
+  adminState.page = 1;
+  refreshAdminTable();
+}
+
+const adminSearchDebounced = debounce(val => {
+  adminState.search = val;
+  adminState.page = 1;
+  refreshAdminTable();
+}, 300);
+
+function adminFilter(type, val) {
+  adminState[type] = val;
+  adminState.page = 1;
+  refreshAdminTable();
+}
+
+function adminPage(p) {
+  adminState.page = p;
+  refreshAdminTable();
+}
+
+function exportCSV() {
+  const token = getToken();
+  const { search, category, state, status } = adminState;
+  const params = new URLSearchParams({ token, search, category, state, status });
+  window.open(`/api/export/csv?${params}`, '_blank');
+  showToast('CSV export started', 'info');
+}
+
+// --- Bulk Actions ---
+function toggleStoreSelect(id, checked) {
+  if (checked) selectedStores.add(id);
+  else selectedStores.delete(id);
+  updateBulkBar();
+}
+
+function toggleSelectAll(checked) {
+  const checkboxes = document.querySelectorAll('#stores-tbody input[type="checkbox"]');
+  checkboxes.forEach(cb => { cb.checked = checked; toggleStoreSelect(parseInt(cb.value), checked); });
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  if (!bar) return;
+  if (selectedStores.size > 0) {
+    bar.classList.add('active');
+    document.getElementById('bulk-count').textContent = `${selectedStores.size} selected`;
+  } else {
+    bar.classList.remove('active');
+  }
+}
+
+async function bulkDelete() {
+  if (!confirm(`Delete ${selectedStores.size} stores? This cannot be undone.`)) return;
+  const ids = Array.from(selectedStores);
+  await apiFetch('/api/stores/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) });
+  showToast(`${ids.length} stores deleted`, 'success');
+  selectedStores.clear();
+  refreshAdminTable();
+  loadActivityFeed();
+}
+
+function bulkExport() {
+  const token = getToken();
+  const ids = Array.from(selectedStores).join(',');
+  window.open(`/api/export/csv?token=${token}&ids=${ids}`, '_blank');
+  showToast(`Exporting ${selectedStores.size} stores`, 'info');
+}
+
+// --- Admin Add Store ---
+function showAddStore() {
+  document.getElementById('add-store-modal').classList.add('active');
+}
+
+async function handleAddStore(e) {
+  e.preventDefault();
+  const form = e.target;
+  const body = {
+    name: form.name.value, owner_name: form.owner_name.value, email: form.email.value,
+    address: form.address.value, city: form.city.value, state: form.state.value,
+    zip: form.zip.value, category: form.category.value,
+    monthly_revenue: parseFloat(form.monthly_revenue.value) || 0, status: form.status.value || 'active'
+  };
+  const result = await apiFetch('/api/stores', { method: 'POST', body: JSON.stringify(body) });
+  if (result && result.id) {
+    showToast(`${result.name} added`, 'success');
+    closeModal();
+    form.reset();
+    refreshAdminTable();
+    loadActivityFeed();
+  }
+}
+
+async function deleteStore(id) {
+  if (!confirm('Delete this store?')) return;
+  await apiFetch(`/api/stores/${id}`, { method: 'DELETE' });
+  showToast('Store deleted', 'success');
+  closeModal();
+  refreshAdminTable();
+  loadActivityFeed();
+}
+
+function printReport() { window.print(); }
+
+// ==========================================
+// INVESTOR DASHBOARD
+// ==========================================
+
+let investorState = { sort: 'name', order: 'asc', page: 1, search: '' };
+
+async function loadInvestorDashboard() {
+  if (!requireAuth(['investor'])) return;
+  initTheme();
+  initSessionTimeout();
+  document.getElementById('user-role').textContent = 'Investor';
+  document.getElementById('user-role').className = 'role-badge investor';
+  renderLogo(document.getElementById('logo-container'));
+  renderSkeletonStats(['stat-total', 'stat-revenue', 'stat-avg']);
+  await refreshInvestorTable();
+}
+
+async function refreshInvestorTable() {
+  const { sort, order, page, search } = investorState;
+  const params = new URLSearchParams({ sort, order, page, limit: 25, search });
+  const data = await apiFetch(`/api/stores?${params}`);
+  if (!data) return;
+
+  animateValue(document.getElementById('stat-total'), data.total);
+  animateCurrency(document.getElementById('stat-revenue'), data.total_revenue);
+  animateCurrency(document.getElementById('stat-avg'), data.avg_revenue);
+
+  renderCategoryChart('chart-category', data.by_category);
+  renderBarChart('chart-top', data.by_category);
+  renderDistributionChart('chart-distribution', data.distribution);
+  renderPerformers('top-performers', data.top10, false);
+  renderPerformers('bottom-performers', data.bottom10, true);
+
+  const tbody = document.getElementById('stores-tbody');
+  if (data.stores.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="loading">No stores found</td></tr>';
+  } else {
+    tbody.innerHTML = data.stores.map(s => `
+      <tr>
+        <td><span class="status-dot ${s.status}"></span>${esc(s.name)}</td>
+        <td><span class="status-badge ${s.status}">${s.status}</span></td>
+        <td class="revenue-cell">${formatCurrency(s.monthly_revenue)}</td>
+      </tr>
+    `).join('');
+  }
+
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.classList.remove('sorted', 'desc');
+    if (th.dataset.sort === sort) {
+      th.classList.add('sorted');
+      if (order === 'desc') th.classList.add('desc');
+    }
+  });
+
+  renderPagination(data, 'investor');
+}
+
+function renderPerformers(containerId, stores, isBottom) {
+  const el = document.getElementById(containerId);
+  if (!el || !stores) return;
+  el.innerHTML = stores.map((s, i) => `
+    <li>
+      <span><span class="performer-rank">${i + 1}</span><span class="performer-name">${esc(s.name)}</span></span>
+      <span class="performer-revenue">${formatCurrency(s.monthly_revenue)}</span>
+    </li>
+  `).join('');
+}
+
+function sortInvestor(field) {
+  if (investorState.sort === field) investorState.order = investorState.order === 'asc' ? 'desc' : 'asc';
+  else { investorState.sort = field; investorState.order = 'asc'; }
+  investorState.page = 1;
+  refreshInvestorTable();
+}
+
+const investorSearchDebounced = debounce(val => {
+  investorState.search = val;
+  investorState.page = 1;
+  refreshInvestorTable();
+}, 300);
+
+function investorPage(p) {
+  investorState.page = p;
+  refreshInvestorTable();
+}
+
+// ==========================================
+// STORE OWNER DASHBOARD
+// ==========================================
+
+async function loadOwnerDashboard() {
+  if (!requireAuth(['store_owner'])) return;
+  initTheme();
+  initSessionTimeout();
+  document.getElementById('user-role').textContent = 'Wholesaler';
+  document.getElementById('user-role').className = 'role-badge store_owner';
+  renderLogo(document.getElementById('logo-container'));
+
+  const data = await apiFetch('/api/stores');
+  if (!data || !data.stores.length) return;
+
+  window._ownerStores = data.stores;
+
+  // If multiple stores, show the store picker
+  if (data.stores.length > 1) {
+    const picker = document.getElementById('store-picker');
+    const tabs = document.getElementById('store-picker-tabs');
+    if (picker && tabs) {
+      picker.style.display = 'block';
+      tabs.innerHTML = data.stores.map((s, i) => `
+        <button class="cart-tab ${i===0?'active':''}" onclick="ownerSelectStore(${s.id}, this)">
+          <span class="status-dot ${s.status}" style="margin-right:5px;"></span>${esc(s.name)}
+        </button>
+      `).join('');
+    }
+  }
+
+  // Load first store by default
+  ownerLoadStore(data.stores[0], data.network_avg || 0);
+}
+
+function ownerSelectStore(storeId, btn) {
+  const store = (window._ownerStores || []).find(s => s.id === storeId);
+  if (!store) return;
+  document.querySelectorAll('#store-picker-tabs .cart-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const data_network_avg = window._ownerNetworkAvg || 0;
+  ownerLoadStore(store, data_network_avg);
+}
+
+function ownerLoadStore(store, networkAvg) {
+  window._ownerNetworkAvg = networkAvg;
+  const pctOfAvg = networkAvg > 0 ? ((store.monthly_revenue / networkAvg) * 100).toFixed(0) : 0;
+  const aboveAvg = store.monthly_revenue >= networkAvg;
+
+  const titleEl = document.getElementById('store-page-title');
+  const subEl = document.getElementById('store-page-subtitle');
+  if (titleEl) titleEl.textContent = store.name;
+  if (subEl) subEl.textContent = `${store.city}, ${store.state} · ${store.category}`;
+
+  const storeNameEl = document.getElementById('store-name');
+  if (storeNameEl) storeNameEl.textContent = store.name;
+  
+  const revenueEl = document.getElementById('store-revenue');
+  if (revenueEl) animateCurrency(revenueEl, store.monthly_revenue);
+  
+  const ownerNameEl = document.getElementById('store-owner-name');
+  if (ownerNameEl) ownerNameEl.textContent = store.owner_name;
+  
+  const emailEl = document.getElementById('store-email');
+  if (emailEl) emailEl.textContent = store.email;
+  
+  const addressEl = document.getElementById('store-address');
+  if (addressEl) addressEl.textContent = `${store.address}, ${store.city}, ${store.state} ${store.zip}`;
+  
+  const categoryEl = document.getElementById('store-category');
+  if (categoryEl) categoryEl.textContent = store.category;
+  
+  const statusEl = document.getElementById('store-status');
+  if (statusEl) statusEl.innerHTML = `<span class="status-badge ${store.status}">${store.status}</span>`;
+  
+  const wholesaleEl = document.getElementById('store-wholesale');
+  if (wholesaleEl) wholesaleEl.textContent = formatCurrency(store.wholesale_price || 0);
+  
+  const retailEl = document.getElementById('store-retail');
+  if (retailEl) retailEl.textContent = formatCurrency(store.retail_price || 0);
+  
+  const distEl = document.getElementById('store-dist-cost');
+  if (distEl) distEl.textContent = formatCurrency(store.distribution_cost || 0);
+
+  const avgEl = document.getElementById('stat-avg');
+  if (avgEl) animateCurrency(avgEl, networkAvg);
+  
+  const compSub = document.getElementById('stat-comparison');
+  if (compSub) {
+    compSub.textContent = `${pctOfAvg}% of network average`;
+    compSub.className = 'stat-sub ' + (aboveAvg ? 'positive' : 'negative');
+  }
+
+  const barFill = document.getElementById('comparison-bar-fill');
+  if (barFill) {
+    setTimeout(() => { barFill.style.width = Math.min(100, pctOfAvg) + '%'; }, 100);
+    barFill.className = 'bar-fill ' + (aboveAvg ? 'above' : 'below');
+  }
+  
+  const barYou = document.getElementById('bar-you');
+  if (barYou) barYou.textContent = formatCurrency(store.monthly_revenue);
+  
+  const barAvg = document.getElementById('bar-avg');
+  if (barAvg) barAvg.textContent = formatCurrency(networkAvg) + ' avg';
+
+  window._currentStore = store;
+  renderOwnerRevenueChart(store.monthly_revenue);
+}
+
+function renderOwnerRevenueChart(baseRevenue) {
+  const ctx = document.getElementById('chart-revenue');
+  if (!ctx) return;
+  
+  // Destroy existing chart instance if present
+  const existing = Chart.getChart(ctx);
+  if (existing) existing.destroy();
+  
+  const months = ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
+  const data = months.map((_, i) => Math.round(baseRevenue * (0.85 + (i * 0.025) + (Math.random() - 0.4) * 0.15)));
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [{
+        label: 'Monthly Revenue', data,
+        borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.08)',
+        fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#2563eb'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'k' }, grid: { color: 'rgba(0,0,0,0.05)' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function showEditStore() {
+  const s = window._currentStore || (window._ownerStores && window._ownerStores[0]);
+  if (!s) { showToast('Store data not loaded yet. Please wait.', 'error'); return; }
+  const form = document.getElementById('edit-store-form');
+  if (!form) return;
+  form.name.value = s.name || '';
+  form.owner_name.value = s.owner_name || '';
+  form.email.value = s.email || '';
+  form.address.value = s.address || '';
+  form.city.value = s.city || '';
+  form.state.value = s.state || '';
+  form.zip.value = s.zip || '';
+  form.category.value = s.category || '';
+  window._currentStore = s;
+  document.getElementById('edit-store-modal').classList.add('active');
+}
+
+async function handleEditStore(e) {
+  e.preventDefault();
+  const form = e.target;
+  const s = window._currentStore;
+  const body = {
+    name: form.name.value, owner_name: form.owner_name.value, email: form.email.value,
+    address: form.address.value, city: form.city.value, state: form.state.value,
+    zip: form.zip.value, category: form.category.value
+  };
+  const result = await apiFetch(`/api/stores/${s.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+  if (result && result.id) {
+    showToast('Store info updated', 'success');
+    closeModal();
+    loadOwnerDashboard();
+  }
+}
+
+// ==========================================
+// SHARED: Charts
+// ==========================================
+
+function renderCategoryChart(canvasId, byCategory) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !byCategory) return;
+  if (ctx._chart) ctx._chart.destroy();
+  const colors = ['#2563eb','#059669','#d97706','#dc2626','#7c3aed','#0891b2','#be185d','#65a30d','#ea580c','#4f46e5','#0d9488','#ca8a04','#e11d48','#6d28d9','#0284c7'];
+  ctx._chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: byCategory.map(c => c.category),
+      datasets: [{ data: byCategory.map(c => c.revenue), backgroundColor: colors.slice(0, byCategory.length), borderWidth: 2, borderColor: getComputedStyle(document.body).getPropertyValue('--bg-card') }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.label}: $${(ctx.raw/1000).toFixed(0)}k` } }
+      }
+    }
+  });
+}
+
+function renderBarChart(canvasId, byCategory) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !byCategory) return;
+  if (ctx._chart) ctx._chart.destroy();
+  ctx._chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: byCategory.slice(0, 10).map(c => c.category),
+      datasets: [{ label: 'Stores', data: byCategory.slice(0, 10).map(c => c.count), backgroundColor: '#2563eb', borderRadius: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { stepSize: 1 } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } }
+    }
+  });
+}
+
+function renderDistributionChart(canvasId, distribution) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !distribution) return;
+  if (ctx._chart) ctx._chart.destroy();
+  ctx._chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: distribution.map(d => d.label),
+      datasets: [{ label: 'Stores', data: distribution.map(d => d.count), backgroundColor: '#059669', borderRadius: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { stepSize: 5 } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    }
+  });
+}
+
+// ==========================================
+// SHARED: Pagination
+// ==========================================
+
+function renderPagination(data, dashboardType) {
+  const footer = document.getElementById('table-footer');
+  if (!footer) return;
+  const { page, total_pages, total_filtered, page_size } = data;
+  const start = ((page - 1) * page_size) + 1;
+  const end = Math.min(page * page_size, total_filtered);
+  const pageFn = dashboardType === 'admin' ? 'adminPage' : 'investorPage';
+
+  let pageButtons = '';
+  const maxButtons = 5;
+  let startPage = Math.max(1, page - 2);
+  let endPage = Math.min(total_pages, startPage + maxButtons - 1);
+  if (endPage - startPage < maxButtons - 1) startPage = Math.max(1, endPage - maxButtons + 1);
+
+  pageButtons += `<button class="page-btn" onclick="${pageFn}(1)" ${page === 1 ? 'disabled' : ''}>&laquo;</button>`;
+  pageButtons += `<button class="page-btn" onclick="${pageFn}(${page - 1})" ${page === 1 ? 'disabled' : ''}>&lsaquo;</button>`;
+  for (let i = startPage; i <= endPage; i++) pageButtons += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="${pageFn}(${i})">${i}</button>`;
+  pageButtons += `<button class="page-btn" onclick="${pageFn}(${page + 1})" ${page === total_pages ? 'disabled' : ''}>&rsaquo;</button>`;
+  pageButtons += `<button class="page-btn" onclick="${pageFn}(${total_pages})" ${page === total_pages ? 'disabled' : ''}>&raquo;</button>`;
+
+  footer.innerHTML = `
+    <span class="page-info">Showing ${start}${end > start ? '-' + end : ''} of ${formatNumber(total_filtered)} stores</span>
+    <div class="pagination">${pageButtons}</div>
+  `;
+}
+
+// ==========================================
+// SIGN-UP
+// ==========================================
+async function handleSignup(e) {
+  e.preventDefault();
+  const form = e.target;
+  const errorEl = document.getElementById('error-msg');
+  const successEl = document.getElementById('success-msg');
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
+
+  const body = {
+    role: form.role.value,
+    name: form.name.value.trim(),
+    phone: form.phone.value.trim(),
+    email: form.email.value.trim(),
+    password: form.password.value,
+    store_name: form.store_name ? form.store_name.value.trim() : '',
+    city: form.city ? form.city.value.trim() : '',
+    state: form.state ? form.state.value.trim() : '',
+    zip: form.zip ? form.zip.value.trim() : '',
+    category: form.category ? form.category.value.trim() : ''
+  };
+
+  if (!body.role) {
+    errorEl.textContent = 'Please select your role';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Sign-up failed';
+      errorEl.style.display = 'block';
+      return;
+    }
+    successEl.textContent = 'Request submitted! An admin will review and approve your account.';
+    successEl.style.display = 'block';
+    form.reset();
+    setTimeout(() => {
+      if (typeof showLogin === 'function') showLogin();
+    }, 3000);
+  } catch {
+    errorEl.textContent = 'Connection error. Please try again.';
+    errorEl.style.display = 'block';
+  }
+}
+
+// ==========================================
+// ADMIN: TABS
+// ==========================================
+function switchTab(tab, btn) {
+  ['stores', 'pending', 'reps', 'users', 'products', 'orders', 'inventory', 'settings'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  if (tab === 'pending') { loadPendingApprovals(); }
+  if (tab === 'reps') loadAdminReps();
+  if (tab === 'users') loadUsersTab();
+  if (tab === 'products') loadProductsTab();
+  if (tab === 'orders') { loadAdminOrders(); markOrdersSeen(); }
+  if (tab === 'inventory') loadInventory();
+  if (tab === 'settings') loadNotifEmails();
+}
+
+// ==========================================
+// ADMIN: PENDING APPROVALS
+// ==========================================
+async function loadPendingApprovals() {
+  const users = await apiFetch('/api/pending-users');
+  const tbody = document.getElementById('pending-tbody');
+  if (!users || users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">No sign-up requests yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>${esc(u.name || '')}</td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.phone || '')}</td>
+      <td><span class="role-badge ${u.role}" style="font-size:11px;">${u.role === 'store_owner' ? 'Wholesaler' : u.role.charAt(0).toUpperCase() + u.role.slice(1)}</span></td>
+      <td>${esc(u.store_name || '—')}</td>
+      <td>${esc(u.city || '—')}</td>
+      <td>${esc(u.state || '—')}</td>
+      <td><span class="status-badge ${u.status}">${u.status}</span></td>
+      <td style="display:flex;gap:8px;">
+        ${u.status === 'pending' ? `
+          <button class="btn btn-sm btn-green" onclick="showApprovePricingModal(${u.id}, '${esc(u.name || u.email)}', '${u.role}')">Approve</button>
+          <button class="btn btn-sm btn-danger" onclick="rejectUser(${u.id}, this)">Reject</button>
+        ` : `<span style="font-size:12px;color:var(--text-muted);">${u.status === 'active' ? 'Approved' : 'Rejected'}</span>`}
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Pricing tiers (internal names never shown to users)
+const PRICING_TIERS = [
+  { value: 'master_distributor', label: 'Master Distributor' },
+  { value: 'distributor',        label: 'Distributor' },
+  { value: 'rep',                label: 'Sales Rep' },
+  { value: 'store_owner',        label: 'Wholesale / Store Owner' },
+  { value: 'custom',             label: 'Custom (set per product)' },
+];
+
+let _approveTargetUserId = null;
+let _approveProducts = [];
+
+async function showApprovePricingModal(userId, userName, userRole) {
+  _approveTargetUserId = userId;
+
+  // Load products to show custom price inputs if needed
+  const products = await apiFetch('/api/products/all');
+  _approveProducts = products || [];
+
+  const modal = document.getElementById('approve-pricing-modal');
+  document.getElementById('approve-user-name').textContent = userName;
+
+  // Build tier options
+  const tierSelect = document.getElementById('approve-tier-select');
+  tierSelect.innerHTML = PRICING_TIERS.map(t =>
+    `<option value="${t.value}">${t.label}</option>`
+  ).join('');
+
+  // Default tier based on role
+  const defaultTier = userRole === 'store_owner' ? 'store_owner' : userRole === 'distributor' ? 'distributor' : 'rep';
+  tierSelect.value = defaultTier;
+  renderTierPreview(defaultTier);
+
+  modal.classList.add('active');
+}
+
+async function renderTierPreview(tier) {
+  const previewWrap = document.getElementById('approve-price-preview');
+  if (!_approveProducts.length) { previewWrap.innerHTML = ''; return; }
+
+  if (tier === 'custom') {
+    previewWrap.innerHTML = `
+      <p style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:10px;">Set custom price per product:</p>
+      ${_approveProducts.map(p => {
+        const roleDefault = (p.role_prices || []).find(rp => rp.role === 'store_owner');
+        return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+          <span style="flex:1;font-size:13px;color:var(--text);">${esc(p.name)}</span>
+          <input type="number" step="0.01" min="0" placeholder="0.00"
+            id="custom-price-${p.id}"
+            style="width:90px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);font-size:13px;"
+            value="${roleDefault ? roleDefault.price : ''}">
+        </div>`;
+      }).join('')}
+    `;
+  } else {
+    // Show what prices they'll get from the selected tier
+    const rows = _approveProducts.map(p => {
+      const rp = (p.role_prices || []).find(r => r.role === tier);
+      const price = rp ? `$${parseFloat(rp.price).toFixed(2)}` : '<span style="color:var(--red)">No price set</span>';
+      return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span style="color:var(--text);">${esc(p.name)}</span>
+        <span style="font-weight:600;color:var(--text);">${price}</span>
+      </div>`;
+    }).join('');
+    previewWrap.innerHTML = `
+      <p style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;">Prices they'll receive:</p>
+      ${rows}
+    `;
+  }
+}
+
+async function showChangeTierModal(userId, userName) {
+  _approveTargetUserId = userId;
+
+  const products = await apiFetch('/api/products/all');
+  _approveProducts = products || [];
+
+  const modal = document.getElementById('approve-pricing-modal');
+  document.getElementById('approve-user-name').textContent = userName;
+
+  // Update button text for this context
+  document.getElementById('approve-confirm-btn').textContent = 'Save Pricing';
+
+  const tierSelect = document.getElementById('approve-tier-select');
+  tierSelect.innerHTML = PRICING_TIERS.map(t =>
+    `<option value="${t.value}">${t.label}</option>`
+  ).join('');
+
+  tierSelect.value = 'distributor';
+  renderTierPreview('distributor');
+  modal.classList.add('active');
+}
+
+async function confirmApproveWithPricing() {
+  const tier = document.getElementById('approve-tier-select').value;
+  const btn = document.getElementById('approve-confirm-btn');
+  const isApproveFlow = btn.textContent.includes('Approve');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  let pricingPayload = { tier };
+
+  if (tier === 'custom') {
+    const customPrices = {};
+    for (const p of _approveProducts) {
+      const val = document.getElementById(`custom-price-${p.id}`)?.value;
+      if (val !== '' && val !== undefined && val !== null) {
+        customPrices[p.id] = parseFloat(val);
+      }
+    }
+    pricingPayload.custom_prices = customPrices;
+  }
+
+  // If approving a pending user, hit the approve endpoint (which also sets pricing)
+  // If changing tier on an active user, hit the dedicated pricing endpoint
+  const endpoint = isApproveFlow
+    ? `/api/users/${_approveTargetUserId}/approve`
+    : `/api/users/${_approveTargetUserId}/pricing`;
+
+  const result = await apiFetch(endpoint, {
+    method: 'PATCH',
+    body: JSON.stringify(pricingPayload)
+  });
+
+  btn.disabled = false;
+  btn.textContent = isApproveFlow ? 'Approve & Activate' : 'Save Pricing';
+
+  if (result && result.success) {
+    document.getElementById('approve-pricing-modal').classList.remove('active');
+    showToast(isApproveFlow ? 'User approved and pricing set' : 'Pricing updated', 'success');
+    if (isApproveFlow) {
+      loadPendingApprovals();
+      loadPendingBadge();
+    } else {
+      loadUsersTab();
+    }
+  }
+}
+
+async function approveUser(id, btn) {
+  btn.disabled = true;
+  const result = await apiFetch(`/api/users/${id}/approve`, { method: 'PATCH' });
+  if (result && result.success) {
+    showToast('User approved and activated', 'success');
+    loadPendingApprovals();
+    loadPendingBadge();
+  }
+}
+
+async function rejectUser(id, btn) {
+  btn.disabled = true;
+  const result = await apiFetch(`/api/users/${id}/reject`, { method: 'PATCH' });
+  if (result && result.success) {
+    showToast('User rejected', 'info');
+    loadPendingApprovals();
+    loadPendingBadge();
+  }
+}
+
+async function loadPendingBadge() {
+  const users = await apiFetch('/api/pending-users');
+  const badge = document.getElementById('pending-badge');
+  if (!badge) return;
+  const tabBtn = badge.closest('.admin-tab');
+  const pending = (users || []).filter(u => u.status === 'pending').length;
+  if (pending > 0) {
+    badge.textContent = pending;
+    badge.style.display = 'inline';
+    if (tabBtn) tabBtn.classList.add('tab-pending');
+  } else {
+    badge.style.display = 'none';
+    if (tabBtn) tabBtn.classList.remove('tab-pending');
+  }
+}
+
+async function checkNewOrdersBadge() {
+  const orders = await apiFetch('/api/orders');
+  if (!orders) return;
+  const badge = document.getElementById('orders-badge');
+  if (!badge) return;
+  const tabBtn = badge.closest('.admin-tab');
+
+  // Track the highest order ID we've seen in localStorage
+  const lastSeen = parseInt(localStorage.getItem('wc_last_seen_order') || '0');
+  const newOrders = orders.filter(o => o.id > lastSeen);
+
+  if (newOrders.length > 0) {
+    badge.textContent = newOrders.length;
+    badge.style.display = 'inline';
+    if (tabBtn) tabBtn.classList.add('tab-new-orders');
+  } else {
+    badge.style.display = 'none';
+    if (tabBtn) tabBtn.classList.remove('tab-new-orders');
+  }
+}
+
+function markOrdersSeen() {
+  const badge = document.getElementById('orders-badge');
+  const tabBtn = badge ? badge.closest('.admin-tab') : null;
+  // Find highest order ID from loaded orders and save it
+  apiFetch('/api/orders').then(orders => {
+    if (!orders || !orders.length) return;
+    const maxId = Math.max(...orders.map(o => o.id));
+    localStorage.setItem('wc_last_seen_order', maxId.toString());
+    if (badge) badge.style.display = 'none';
+    if (tabBtn) tabBtn.classList.remove('tab-new-orders');
+  });
+}
+
+async function checkLowStockBadge() {
+  const products = await apiFetch('/api/products/all');
+  if (!products) return;
+  const redProducts    = products.filter(p => p.active && p.stock <= 50);
+  const yellowProducts = products.filter(p => p.active && p.stock >= 51 && p.stock <= 99);
+  const badge = document.getElementById('low-stock-badge');
+  const tabBtn = badge ? badge.closest('.admin-tab') : null;
+  if (!badge || !tabBtn) return;
+
+  tabBtn.classList.remove('tab-low-stock', 'tab-medium-stock');
+
+  if (redProducts.length > 0) {
+    badge.textContent = redProducts.length;
+    badge.style.display = 'inline';
+    badge.style.background = 'var(--red)';
+    tabBtn.classList.add('tab-low-stock');
+  } else if (yellowProducts.length > 0) {
+    badge.textContent = yellowProducts.length;
+    badge.style.display = 'inline';
+    badge.style.background = 'var(--yellow)';
+    tabBtn.classList.add('tab-medium-stock');
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ==========================================
+// ADMIN: REPS
+// ==========================================
+async function loadAdminReps() {
+  const reps = await apiFetch('/api/reps');
+  const tbody = document.getElementById('reps-tbody');
+  if (!reps || reps.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">No reps yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = reps.map(r => `
+    <tr>
+      <td>${esc(r.name)}</td>
+      <td>${esc(r.email)}</td>
+      <td>${r.sponsor_name ? esc(r.sponsor_name) : '<span style="color:var(--text-muted)">None</span>'}</td>
+      <td>${r.store_count}</td>
+      <td class="revenue-cell">${formatCurrency(r.store_revenue)}</td>
+      <td class="revenue-cell">${formatCurrency(r.store_revenue * r.commission_rate)}</td>
+      <td><span class="status-badge ${r.status}">${r.status}</span></td>
+    </tr>
+  `).join('');
+}
+
+function showAddRepModal() {
+  document.getElementById('add-rep-modal').classList.add('active');
+}
+
+async function handleAdminAddRep(e) {
+  e.preventDefault();
+  const form = e.target;
+  const body = {
+    name: form.name.value.trim(),
+    email: form.email.value.trim(),
+    phone: form.phone.value.trim(),
+    password: form.password.value,
+    sponsor_rep_id: form.sponsor_rep_id.value ? parseInt(form.sponsor_rep_id.value) : null
+  };
+  const result = await apiFetch('/api/reps', { method: 'POST', body: JSON.stringify(body) });
+  if (result && result.success) {
+    showToast('Rep added successfully', 'success');
+    closeModal();
+    form.reset();
+    loadAdminReps();
+  } else if (result && result.error) {
+    showToast(result.error, 'error');
+  }
+}
+
+// Update admin table to show new columns
+async function refreshAdminTable() {
+  const { sort, order, page, search, category, state, status } = adminState;
+  const params = new URLSearchParams({ sort, order, page, limit: 25, search, category, state, status });
+  const data = await apiFetch(`/api/stores?${params}`);
+  if (!data) return;
+
+  animateValue(document.getElementById('stat-total'), data.total);
+  animateCurrency(document.getElementById('stat-revenue'), data.total_revenue);
+  animateCurrency(document.getElementById('stat-avg'), data.avg_revenue);
+
+  const statusCounts = {};
+  (data.by_status || []).forEach(s => statusCounts[s.status] = s.count);
+  const activeEl = document.getElementById('stat-active');
+  if (activeEl) activeEl.textContent = `${statusCounts.active || 0} active / ${statusCounts.pending || 0} pending / ${statusCounts.inactive || 0} inactive`;
+
+  renderCategoryChart('chart-category', data.by_category);
+  renderBarChart('chart-top', data.by_category);
+
+  selectedStores.clear();
+  updateBulkBar();
+
+  const tbody = document.getElementById('stores-tbody');
+  if (data.stores.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="12" class="loading">No stores found</td></tr>';
+  } else {
+    tbody.innerHTML = data.stores.map(s => `
+      <tr>
+        <td class="check-col"><input type="checkbox" value="${s.id}" onchange="toggleStoreSelect(${s.id}, this.checked)"></td>
+        <td style="cursor:pointer" onclick="showStoreDetail(${s.id})"><span class="status-dot ${s.status}"></span>${esc(s.name)}</td>
+        <td>${esc(s.owner_name)}</td>
+        <td>${esc(s.email)}</td>
+        <td>${esc(s.city)}</td>
+        <td>${esc(s.state)}</td>
+        <td>${esc(s.category)}</td>
+        <td><span class="status-badge ${s.status}">${s.status}</span></td>
+        <td class="revenue-cell">${formatCurrency(s.monthly_revenue)}</td>
+        <td>${formatCurrency(s.wholesale_price)}</td>
+        <td>${formatCurrency(s.retail_price)}</td>
+        <td>${formatCurrency(s.distribution_cost)}</td>
+      </tr>
+    `).join('');
+  }
+
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.classList.remove('sorted', 'desc');
+    if (th.dataset.sort === sort) {
+      th.classList.add('sorted');
+      if (order === 'desc') th.classList.add('desc');
+    }
+  });
+
+  renderPagination(data, 'admin');
+}
+// ==========================================
+// DISTRIBUTOR DASHBOARD
+// ==========================================
+let _allDistStores = [];
+
+async function loadDistributorDashboard() {
+  if (!requireAuth(['distributor'])) return;
+  initTheme();
+  initSessionTimeout();
+  document.getElementById('user-role').className = 'role-badge distributor';
+  renderLogo(document.getElementById('logo-container'));
+
+  const stores = await apiFetch('/api/stores');
+  if (!stores) return;
+  _allDistStores = stores.stores || [];
+
+  renderDistributorTable(_allDistStores);
+
+  const totalDistCost = _allDistStores.reduce((a, s) => a + (s.distribution_cost || 0), 0);
+  const avgWholesale = _allDistStores.length ? _allDistStores.reduce((a, s) => a + (s.wholesale_price || 0), 0) / _allDistStores.length : 0;
+  const avgRetail = _allDistStores.length ? _allDistStores.reduce((a, s) => a + (s.retail_price || 0), 0) / _allDistStores.length : 0;
+
+  animateValue(document.getElementById('stat-total'), _allDistStores.length);
+  animateCurrency(document.getElementById('stat-dist-cost'), totalDistCost);
+  document.getElementById('stat-avg-wholesale').textContent = formatCurrency(avgWholesale);
+  document.getElementById('stat-avg-retail').textContent = formatCurrency(avgRetail);
+}
+
+function renderDistributorTable(stores) {
+  const tbody = document.getElementById('stores-tbody');
+  if (!stores.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">No stores assigned</td></tr>';
+    return;
+  }
+  tbody.innerHTML = stores.map(s => `
+    <tr>
+      <td><span class="status-dot ${s.status}"></span>${esc(s.name)}</td>
+      <td>${esc(s.owner_name)}</td>
+      <td>${esc(s.city)}</td>
+      <td>${esc(s.state)}</td>
+      <td>${esc(s.category)}</td>
+      <td>${formatCurrency(s.wholesale_price)}</td>
+      <td>${formatCurrency(s.retail_price)}</td>
+      <td class="revenue-cell">${formatCurrency(s.distribution_cost)}</td>
+      <td><span class="status-badge ${s.status}">${s.status}</span></td>
+      <td><a href="/shop.html?store_id=${s.id}" style="display:inline-block;padding:5px 12px;background:#2563eb;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">🛒 Buy</a></td>
+    </tr>
+  `).join('');
+}
+
+function filterStores(val) {
+  const q = val.toLowerCase();
+  const filtered = _allDistStores.filter(s =>
+    s.name.toLowerCase().includes(q) || s.city.toLowerCase().includes(q) || s.owner_name.toLowerCase().includes(q)
+  );
+  renderDistributorTable(filtered);
+}
+
+// ==========================================
+// REP DASHBOARD
+// ==========================================
+async function loadRepDashboard() {
+  if (!requireAuth(['rep'])) return;
+  initTheme();
+  initSessionTimeout();
+  document.getElementById('user-role').className = 'role-badge rep';
+  renderLogo(document.getElementById('logo-container'));
+
+  const data = await apiFetch('/api/reps');
+  if (!data || !data.rep) return;
+
+  animateValue(document.getElementById('stat-stores'), data.storeCount);
+  animateCurrency(document.getElementById('stat-store-rev'), data.storeRevenue);
+  animateCurrency(document.getElementById('stat-my-commission'), data.myCommission);
+  animateCurrency(document.getElementById('stat-sponsor-commission'), data.sponsorCommission);
+  animateCurrency(document.getElementById('stat-total-earnings'), data.totalEarnings);
+
+  // My stores table
+  const storesTbody = document.getElementById('my-stores-tbody');
+  if (!data.stores || !data.stores.length) {
+    storesTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No stores assigned yet</td></tr>';
+  } else {
+    storesTbody.innerHTML = data.stores.map(s => `
+      <tr>
+        <td>${esc(s.name)}</td>
+        <td>${esc(s.category)}</td>
+        <td class="revenue-cell">${formatCurrency(s.monthly_revenue)}</td>
+        <td class="revenue-cell">${formatCurrency(s.monthly_revenue * 0.10)}</td>
+        <td><a href="/shop.html?store_id=${s.id}" style="display:inline-block;padding:5px 12px;background:#2563eb;color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">🛒 Buy</a></td>
+      </tr>
+    `).join('');
+  }
+
+  // Downline reps table
+  const downlineTbody = document.getElementById('downline-tbody');
+  if (!data.downline || !data.downline.length) {
+    downlineTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No reps enrolled yet. Use "+ Enroll New Rep" to add one.</td></tr>';
+  } else {
+    downlineTbody.innerHTML = data.downline.map(d => {
+      const theirCommission = d.store_revenue * d.commission_rate;
+      const myBonus = theirCommission * 0.05;
+      return `
+        <tr>
+          <td>${esc(d.name)}</td>
+          <td>${esc(d.email)}</td>
+          <td>${d.store_count}</td>
+          <td class="revenue-cell">${formatCurrency(theirCommission)}</td>
+          <td class="revenue-cell">${formatCurrency(myBonus)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+}
+
+function showEnrollModal() {
+  document.getElementById('enroll-modal').classList.add('active');
+}
+
+async function handleEnrollRep(e) {
+  e.preventDefault();
+  const form = e.target;
+  const body = {
+    name: form.name.value.trim(),
+    email: form.email.value.trim(),
+    phone: form.phone.value.trim(),
+    password: form.password.value
+  };
+  const result = await apiFetch('/api/reps/enroll', { method: 'POST', body: JSON.stringify(body) });
+  if (result && result.success) {
+    showToast(`${body.name} enrolled as rep!`, 'success');
+    closeModal();
+    form.reset();
+    loadRepDashboard();
+  } else if (result && result.error) {
+    showToast(result.error, 'error');
+  }
+}
+
+// ==========================================
+// ADMIN: USERS TAB
+// ==========================================
+async function loadUsersTab() {
+  const users = await apiFetch('/api/users');
+  const tbody = document.getElementById('users-tbody');
+  if (!users || users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted);">No users yet</td></tr>';
+    return;
+  }
+  const roleLabels = { admin: 'Admin', investor: 'Investor', store_owner: 'Wholesaler', distributor: 'Distributor', rep: 'Rep' };
+  const tierableRoles = ['store_owner', 'distributor', 'rep'];
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>${esc(u.name || '—')}</td>
+      <td>${esc(u.email)}</td>
+      <td><span class="role-badge ${u.role}" style="font-size:11px;">${roleLabels[u.role] || u.role}</span></td>
+      <td>${esc(u.phone || '—')}</td>
+      <td><span class="status-badge ${u.status}">${u.status}</span></td>
+      <td>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${u.status === 'active'
+            ? `<button class="btn btn-sm btn-danger" onclick="toggleUserStatus(${u.id}, 'inactive', this)">Deactivate</button>`
+            : `<button class="btn btn-sm btn-green" onclick="toggleUserStatus(${u.id}, 'active', this)">Activate</button>`
+          }
+          ${tierableRoles.includes(u.role)
+            ? `<button class="btn btn-sm btn-outline" onclick="showChangeTierModal(${u.id}, '${esc(u.name || u.email)}')">Change Tier</button>`
+            : ''
+          }
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function showCreateUserModal(role) {
+  const titles = { admin: 'Add Admin Account', investor: 'Add Investor Account' };
+  const subtitles = { admin: 'This account will have full admin access immediately.', investor: 'This account will have read-only investor access immediately.' };
+  document.getElementById('create-user-title').textContent = titles[role];
+  document.getElementById('create-user-subtitle').textContent = subtitles[role];
+  document.getElementById('create-user-role').value = role;
+  document.getElementById('create-user-modal').classList.add('active');
+}
+
+async function handleCreateUser(e) {
+  e.preventDefault();
+  const form = e.target;
+  const body = {
+    role: form.role.value,
+    name: form.name.value.trim(),
+    email: form.email.value.trim(),
+    phone: form.phone.value.trim(),
+    password: form.password.value
+  };
+  const result = await apiFetch('/api/users', { method: 'POST', body: JSON.stringify(body) });
+  if (result && result.success) {
+    showToast(`${body.role === 'admin' ? 'Admin' : 'Investor'} account created`, 'success');
+    closeModal();
+    form.reset();
+    loadUsersTab();
+  } else if (result && result.error) {
+    showToast(result.error, 'error');
+  }
+}
+
+async function toggleUserStatus(id, status, btn) {
+  btn.disabled = true;
+  const result = await apiFetch(`/api/users/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (result && result.success) {
+    showToast(`User ${status === 'active' ? 'activated' : 'deactivated'}`, 'success');
+    loadUsersTab();
+  }
+}
+
+// ==========================================
+// ADMIN: ORDERS
+// ==========================================
+async function loadAdminOrders() {
+  const orders = await apiFetch('/api/orders');
+  const tbody = document.getElementById('orders-tbody');
+  if (!orders || !orders.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="9">
+        <div style="text-align:center;padding:60px 20px;">
+          <div style="font-size:48px;margin-bottom:16px;">📋</div>
+          <p style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:8px;">No orders yet</p>
+          <p style="font-size:13px;color:var(--text-muted);">Orders placed by your clients will appear here.</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+  const statusColors = { pending:'pending', processing:'pending', shipped:'active', delivered:'active', cancelled:'inactive' };
+  tbody.innerHTML = orders.map(o => `
+    <tr style="cursor:pointer;" onclick="showOrderDetail(${o.id})">
+      <td style="font-weight:600">#${o.id}</td>
+      <td style="font-size:12px">${new Date(o.created_at).toLocaleDateString()}</td>
+      <td>${esc(o.user_name || o.user_email || '—')}</td>
+      <td>${esc(o.store_name || '—')}</td>
+      <td style="font-size:12px">${o.items ? o.items.length + ' item(s)' : '—'}</td>
+      <td class="revenue-cell">$${parseFloat(o.total).toFixed(2)}</td>
+      <td>
+        <span class="status-badge ${o.payment_method === 'invoice' ? 'pending' : 'active'}">${o.payment_method === 'invoice' ? 'Invoice' : 'Card'}</span>
+        <span class="status-badge ${o.payment_status === 'paid' ? 'active' : 'pending'}" style="margin-left:4px;">${o.payment_status}</span>
+      </td>
+      <td><span class="status-badge ${statusColors[o.status] || 'pending'}">${o.status}</span></td>
+      <td onclick="event.stopPropagation()">
+        <select onchange="updateOrderStatus(${o.id}, this.value)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);">
+          ${['pending','processing','shipped','delivered','cancelled'].map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+        </select>
+      </td>
+    </tr>
+  `).join('');
+
+  // store orders globally for detail lookup
+  window._adminOrders = orders;
+}
+
+function showOrderDetail(orderId) {
+  const o = (window._adminOrders || []).find(x => x.id === orderId);
+  if (!o) return;
+  renderOrderDetailModal(o, true);
+}
+
+function renderOrderDetailModal(o, isAdmin) {
+  const modalId = isAdmin ? 'order-detail-modal' : 'my-order-detail-modal';
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  const statusColors = { pending:'pending', processing:'pending', shipped:'active', delivered:'active', cancelled:'inactive' };
+  modal.querySelector('.order-detail-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Order</p>
+        <p style="font-size:18px;font-weight:700;color:var(--text);">#${o.id}</p>
+      </div>
+      <div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Date</p>
+        <p style="font-size:14px;color:var(--text);">${new Date(o.created_at).toLocaleString()}</p>
+      </div>
+      ${isAdmin ? `<div><p style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Placed By</p><p style="font-size:14px;color:var(--text);">${esc(o.user_name||o.user_email||'—')}</p></div>` : ''}
+      ${o.store_name ? `<div><p style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">For Store</p><p style="font-size:14px;color:var(--text);">${esc(o.store_name)}</p></div>` : ''}
+      <div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Status</p>
+        <span class="status-badge ${statusColors[o.status]||'pending'}">${o.status}</span>
+      </div>
+      <div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Payment</p>
+        <span class="status-badge ${o.payment_method==='invoice'?'pending':'active'}">${o.payment_method==='invoice'?'Invoice / Net-30':'Credit Card'}</span>
+        <span class="status-badge ${o.payment_status==='paid'?'active':'pending'}" style="margin-left:4px;">${o.payment_status}</span>
+      </div>
+    </div>
+
+    <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
+      <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;">Items Ordered (${o.items?o.items.length:0})</p>
+      ${o.items && o.items.length ? o.items.map(item => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div>
+            <p style="font-size:13px;font-weight:500;color:var(--text);">${esc(item.name)}</p>
+            <p style="font-size:12px;color:var(--text-muted);">$${parseFloat(item.unit_price).toFixed(2)} × ${item.quantity}</p>
+          </div>
+          <p style="font-size:14px;font-weight:600;color:var(--accent);">$${parseFloat(item.total_price).toFixed(2)}</p>
+        </div>
+      `).join('') : '<p style="color:var(--text-muted);font-size:13px;">No items</p>'}
+      <div style="display:flex;justify-content:space-between;padding:10px 0 4px;">
+        <span style="font-size:13px;color:var(--text-secondary);">Subtotal</span>
+        <span style="font-size:13px;color:var(--text);">$${parseFloat(o.subtotal).toFixed(2)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;">
+        <span style="font-size:13px;color:var(--text-secondary);">Shipping</span>
+        <span style="font-size:13px;color:var(--text);">${parseFloat(o.shipping_cost)===0?'FREE':'$'+parseFloat(o.shipping_cost).toFixed(2)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0 0;border-top:1px solid var(--border);margin-top:6px;">
+        <span style="font-size:15px;font-weight:700;color:var(--text);">Total</span>
+        <span style="font-size:15px;font-weight:700;color:var(--accent);">$${parseFloat(o.total).toFixed(2)}</span>
+      </div>
+    </div>
+
+    <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
+      <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">Shipping Address</p>
+      <p style="font-size:13px;color:var(--text-secondary);">${esc(o.shipping_name||'')}</p>
+      <p style="font-size:13px;color:var(--text-secondary);">${esc(o.shipping_address||'')}</p>
+      <p style="font-size:13px;color:var(--text-secondary);">${esc(o.shipping_city||'')}${o.shipping_city?', ':''}${esc(o.shipping_state||'')} ${esc(o.shipping_zip||'')}</p>
+    </div>
+
+    ${o.notes ? `
+    <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;">
+      <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Order Notes</p>
+      <p style="font-size:13px;color:var(--text-secondary);">${esc(o.notes)}</p>
+    </div>` : ''}
+  `;
+  modal.classList.add('active');
+}
+
+async function updateOrderStatus(id, status) {
+  const result = await apiFetch(`/api/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (result && result.success) showToast('Order status updated', 'success');
+}
+
+// ==========================================
+// MY ORDERS (for rep, store_owner, distributor)
+// ==========================================
+async function loadMyOrders(tbodyId) {
+  const orders = await apiFetch('/api/orders');
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  window._myOrders = orders || [];
+
+  if (!orders || !orders.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7">
+          <div style="text-align:center;padding:60px 20px;">
+            <div style="font-size:48px;margin-bottom:16px;">📦</div>
+            <p style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:8px;">No orders yet</p>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">When you place an order from the shop, it will appear here.</p>
+            <a href="/shop.html" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">🛒 Go to Shop</a>
+          </div>
+        </td>
+      </tr>`;
+    return;
+  }
+
+  const statusColors = { pending:'pending', processing:'pending', shipped:'active', delivered:'active', cancelled:'inactive' };
+  tbody.innerHTML = orders.map(o => `
+    <tr style="cursor:pointer;" onclick="showMyOrderDetail(${o.id})">
+      <td style="font-weight:600">#${o.id}</td>
+      <td style="font-size:12px">${new Date(o.created_at).toLocaleDateString()}</td>
+      <td>${esc(o.store_name || 'Personal')}</td>
+      <td style="font-size:12px">${o.items ? o.items.length + ' item(s)' : '—'}</td>
+      <td class="revenue-cell">$${parseFloat(o.total).toFixed(2)}</td>
+      <td><span class="status-badge ${o.payment_method==='invoice'?'pending':'active'}">${o.payment_method==='invoice'?'Invoice':'Card'}</span></td>
+      <td><span class="status-badge ${statusColors[o.status]||'pending'}">${o.status}</span></td>
+    </tr>
+  `).join('');
+}
+
+function showMyOrderDetail(orderId) {
+  const o = (window._myOrders || []).find(x => x.id === orderId);
+  if (!o) return;
+  renderOrderDetailModal(o, false);
+}
+
+// ==========================================
+// TAB SWITCHER FOR NON-ADMIN DASHBOARDS
+// ==========================================
+function switchMyTab(tab, btn) {
+  ['main','orders','inventory'].forEach(t => {
+    const el = document.getElementById('my-tab-' + t);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (tab === 'orders') loadMyOrders('my-orders-tbody');
+  if (tab === 'inventory') loadInventory();
+}
+
+// ==========================================
+// INVENTORY (full featured)
+// ==========================================
+let _inventoryData = [];
+let _inventorySearch = '';
+let _inventorySort = 'low'; // 'low' | 'name' | 'stock-asc' | 'stock-desc'
+let _inventoryShowLowOnly = false;
+
+async function loadInventory() {
+  const el = document.getElementById('inventory-content');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);">Loading inventory...</div>';
+
+  const rows = await apiFetch('/api/inventory');
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);">No inventory data available yet.</div>';
+    return;
+  }
+  _inventoryData = rows;
+  _inventorySearch = '';
+  _inventorySort = 'low';
+  _inventoryShowLowOnly = false;
+
+  // Render controls once — these never re-render so search keeps focus
+  el.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
+      <input type="text" id="inventory-search-input" placeholder="🔍 Search stores by name, city, state..."
+        oninput="inventorySearch(this.value)"
+        style="flex:1;min-width:200px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;font-family:inherit;">
+      <select id="inventory-sort-select" onchange="inventorySort(this.value)"
+        style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:13px;font-family:inherit;">
+        <option value="low">Sort: Most Low Stock</option>
+        <option value="name">Sort: Store Name A–Z</option>
+        <option value="stock-asc">Sort: Least Stocked First</option>
+        <option value="stock-desc">Sort: Most Stocked First</option>
+      </select>
+    </div>
+    <div id="inventory-banner"></div>
+    <div id="inventory-stores"></div>
+  `;
+
+  renderInventoryStores();
+}
+
+function renderInventory() {
+  renderInventoryStores();
+}
+
+function renderInventoryStores() {
+  const bannerEl = document.getElementById('inventory-banner');
+  const storesEl = document.getElementById('inventory-stores');
+  if (!storesEl) return;
+
+  // Group by store
+  const byStore = {};
+  for (const r of _inventoryData) {
+    if (!byStore[r.store_id]) byStore[r.store_id] = { id: r.store_id, name: r.store_name, city: r.city, state: r.state, items: [] };
+    if (r.product_id) byStore[r.store_id].items.push(r);
+  }
+
+  let stores = Object.values(byStore);
+
+  // Filter by search
+  if (_inventorySearch) {
+    const q = _inventorySearch.toLowerCase();
+    stores = stores.filter(s => s.name.toLowerCase().includes(q) || (s.city||'').toLowerCase().includes(q) || (s.state||'').toLowerCase().includes(q));
+  }
+
+  // Filter low only
+  if (_inventoryShowLowOnly) {
+    stores = stores.filter(s => s.items.some(i => i.is_low));
+  }
+
+  // Sort stores
+  if (_inventorySort === 'low') {
+    stores.sort((a, b) => b.items.filter(i=>i.is_low).length - a.items.filter(i=>i.is_low).length);
+  } else if (_inventorySort === 'name') {
+    stores.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (_inventorySort === 'stock-asc') {
+    stores.sort((a, b) => {
+      const aMin = Math.min(...a.items.map(i=>i.quantity), 999);
+      const bMin = Math.min(...b.items.map(i=>i.quantity), 999);
+      return aMin - bMin;
+    });
+  } else if (_inventorySort === 'stock-desc') {
+    stores.sort((a, b) => {
+      const aMax = Math.max(...a.items.map(i=>i.quantity), 0);
+      const bMax = Math.max(...b.items.map(i=>i.quantity), 0);
+      return bMax - aMax;
+    });
+  }
+
+  const totalLow = _inventoryData.filter(r => r.is_low).length;
+
+  // Update banner
+  if (bannerEl) {
+    bannerEl.innerHTML = totalLow > 0 ? `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:20px;">⚠️</span>
+          <span style="font-size:14px;font-weight:600;color:#dc2626;">${totalLow} product${totalLow>1?'s':''} are low on stock</span>
+        </div>
+        <button onclick="inventoryToggleLow()" style="padding:7px 14px;border-radius:7px;border:1px solid #fca5a5;background:${_inventoryShowLowOnly?'#dc2626':'#fff'};color:${_inventoryShowLowOnly?'#fff':'#dc2626'};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">
+          ${_inventoryShowLowOnly ? '\u2715 Show All Stores' : '\u26a0 Show Low Inventory Stores'}
+        </button>
+      </div>` : `
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">\u2705</span>
+        <span style="font-size:14px;font-weight:600;color:#16a34a;">All stores are well stocked</span>
+      </div>`;
+  }
+
+  // Update stores
+  const isAdmin = window._userRole === 'admin';
+  storesEl.innerHTML = stores.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--text-muted);">No stores match your search.</div>' : stores.map(store => {
+      const lowItems = store.items.filter(i => i.is_low);
+      const sortedItems = [...store.items].sort((a,b) => b.is_low - a.is_low || a.quantity - b.quantity);
+      return `
+      <div class="table-card" style="margin-bottom:16px;">
+        <div class="table-toolbar">
+          <div>
+            <h2 style="margin:0 0 2px;"><span class="status-dot ${store.items.every(i=>!i.is_low)?'active':'inactive'}"></span>${esc(store.name)}</h2>
+            <p style="font-size:12px;color:var(--text-muted);margin:0;">${esc(store.city||'')}${store.city?', ':''}${esc(store.state||'')}</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            ${lowItems.length > 0
+              ? `<span style="font-size:12px;font-weight:600;color:#dc2626;">⚠ ${lowItems.length} low</span>`
+              : `<span style="font-size:12px;color:#16a34a;">✓ All stocked</span>`}
+            <a href="/shop.html?store_id=${store.id}" style="padding:6px 14px;background:#2563eb;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">🛒 Order</a>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Product</th><th>SKU</th><th>In Stock</th><th>Low Stock Threshold</th><th>Status</th>${isAdmin ? '<th>Save</th>' : ''}</tr></thead>
+            <tbody>
+              ${sortedItems.length ? sortedItems.map(item => `
+                <tr style="${item.is_low ? 'background:rgba(239,68,68,0.04);' : ''}">
+                  <td style="font-weight:500">${esc(item.product_name)}</td>
+                  <td style="font-size:12px;color:var(--text-muted)">${esc(item.sku||'—')}</td>
+                  <td style="font-weight:600;">
+                    ${isAdmin
+                      ? `<input type="number" min="0" value="${item.quantity}"
+                           id="inv-qty-${store.id}-${item.product_id}"
+                           style="width:80px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);font-size:13px;text-align:center;"
+                           onchange="markInventoryDirty(${store.id},${item.product_id})">`
+                      : `<span style="color:${item.quantity===0?'#dc2626':item.is_low?'#f59e0b':'var(--text)'}">${item.quantity}</span>`
+                    }
+                  </td>
+                  <td style="font-size:12px;">
+                    ${isAdmin
+                      ? `<input type="number" min="0" value="${item.low_stock_threshold}"
+                           id="inv-thr-${store.id}-${item.product_id}"
+                           style="width:80px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);font-size:13px;text-align:center;"
+                           onchange="markInventoryDirty(${store.id},${item.product_id})">`
+                      : `<span style="color:var(--text-muted)">${item.low_stock_threshold}</span>`
+                    }
+                  </td>
+                  <td id="inv-status-${store.id}-${item.product_id}">${item.quantity === 0
+                    ? '<span class="status-badge inactive">🔴 Out of Stock</span>'
+                    : item.is_low
+                      ? '<span class="status-badge pending">⚠ Low Stock</span>'
+                      : '<span class="status-badge active">✓ In Stock</span>'
+                  }</td>
+                  ${isAdmin ? `<td><button id="inv-save-${store.id}-${item.product_id}"
+                      onclick="saveInventoryRow(${store.id},${item.product_id})"
+                      style="padding:5px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;color:var(--text-secondary);cursor:pointer;font-family:inherit;transition:all 0.15s;"
+                      disabled>Saved</button></td>` : ''}
+                </tr>
+              `).join('') : `<tr><td colspan="${isAdmin?6:5}" style="text-align:center;color:var(--text-muted);padding:20px;">No inventory data</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function inventorySearch(val) {
+  _inventorySearch = val;
+  renderInventoryStores();
+}
+
+function inventorySort(val) {
+  _inventorySort = val;
+  renderInventoryStores();
+}
+
+function inventoryToggleLow() {
+  _inventoryShowLowOnly = !_inventoryShowLowOnly;
+  renderInventoryStores();
+}
+
+function markInventoryDirty(storeId, productId) {
+  const btn = document.getElementById(`inv-save-${storeId}-${productId}`);
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = 'Save';
+  btn.style.background = 'var(--accent)';
+  btn.style.color = '#fff';
+  btn.style.borderColor = 'var(--accent)';
+}
+
+async function saveInventoryRow(storeId, productId) {
+  const btn = document.getElementById(`inv-save-${storeId}-${productId}`);
+  const qtyEl = document.getElementById(`inv-qty-${storeId}-${productId}`);
+  const thrEl = document.getElementById(`inv-thr-${storeId}-${productId}`);
+  if (!btn || !qtyEl) return;
+
+  const quantity = parseInt(qtyEl.value);
+  const low_stock_threshold = thrEl ? parseInt(thrEl.value) : 10;
+
+  if (isNaN(quantity) || quantity < 0) { showToast('Quantity must be 0 or more', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  const result = await apiFetch(`/api/inventory/${storeId}/${productId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ quantity, low_stock_threshold })
+  });
+
+  if (result && result.success) {
+    btn.textContent = 'Saved';
+    btn.style.background = 'var(--green-bg)';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+
+    // Update the status badge live without re-rendering the whole table
+    const statusEl = document.getElementById(`inv-status-${storeId}-${productId}`);
+    if (statusEl) {
+      const isLow = quantity <= low_stock_threshold;
+      statusEl.innerHTML = quantity === 0
+        ? '<span class="status-badge inactive">🔴 Out of Stock</span>'
+        : isLow
+          ? '<span class="status-badge pending">⚠ Low Stock</span>'
+          : '<span class="status-badge active">✓ In Stock</span>';
+    }
+
+    // Update local data so re-sorts work correctly
+    for (const row of _inventoryData) {
+      if (row.store_id === storeId && row.product_id === productId) {
+        row.quantity = quantity;
+        row.low_stock_threshold = low_stock_threshold;
+        row.is_low = quantity <= low_stock_threshold ? 1 : 0;
+      }
+    }
+    showToast('Inventory updated', 'success');
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+    btn.style.background = 'var(--accent)';
+    btn.style.color = '#fff';
+    showToast('Failed to save', 'error');
+  }
+}
+
+// ==========================================
+// SETTINGS: NOTIFICATION EMAILS
+// ==========================================
+async function loadNotifEmails() {
+  const emails = await apiFetch('/api/notification-emails');
+  const list = document.getElementById('notif-emails-list');
+  if (!list) return;
+
+  if (!emails || !emails.length) {
+    list.innerHTML = '<p style="font-size:13px;color:var(--text-muted);padding:4px;">No notification emails added yet.</p>';
+    return;
+  }
+
+  list.innerHTML = emails.map(e => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--border);">
+      <div style="width:36px;height:36px;background:var(--accent-bg);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">📧</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:600;color:var(--text);">${esc(e.email)}</div>
+        ${e.label ? `<div style="font-size:12px;color:var(--text-muted);">${esc(e.label)}</div>` : ''}
+      </div>
+      <button onclick="removeNotifEmail(${e.id})"
+        style="padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--red);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all 0.15s;"
+        onmouseover="this.style.background='var(--red-bg)';this.style.borderColor='var(--red)'"
+        onmouseout="this.style.background='transparent';this.style.borderColor='var(--border)'">
+        Remove
+      </button>
+    </div>
+  `).join('');
+}
+
+async function addNotifEmail() {
+  const emailEl = document.getElementById('notif-email-input');
+  const labelEl = document.getElementById('notif-label-input');
+  const email = emailEl.value.trim();
+  const label = labelEl ? labelEl.value.trim() : '';
+  if (!email || !email.includes('@')) { showToast('Enter a valid email address', 'error'); return; }
+
+  const result = await apiFetch('/api/notification-emails', {
+    method: 'POST',
+    body: JSON.stringify({ email, label })
+  });
+
+  if (result && result.id) {
+    emailEl.value = '';
+    if (labelEl) labelEl.value = '';
+    showToast(`${email} added`, 'success');
+    loadNotifEmails();
+  } else if (result && result.error) {
+    showToast(result.error, 'error');
+  }
+}
+
+async function removeNotifEmail(id) {
+  const result = await apiFetch(`/api/notification-emails/${id}`, { method: 'DELETE' });
+  if (result && result.success) {
+    showToast('Email removed', 'info');
+    loadNotifEmails();
+  }
+}

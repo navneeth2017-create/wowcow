@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WowCow - Rep Dashboard</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>const saved=localStorage.getItem('dh_theme')||'light';document.documentElement.setAttribute('data-theme',saved);</script>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="topbar">
+      <div class="logo-mark" id="logo-container"></div>
+      <div class="user-info">
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></button>
+        <button class="btn-logout" onclick="showProfile()">Profile</button>
+        <span class="role-badge" id="user-role">Rep</span>
+        <a href="/shop.html" style="padding:7px 16px;background:#2563eb;color:#fff;border-radius:7px;font-size:13px;font-weight:600;text-decoration:none;margin-right:8px;">🛒 Shop</a><button class="btn-logout" onclick="logout()">Sign Out</button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div style="display:flex;gap:8px;margin-bottom:24px;border-bottom:1px solid var(--border);">
+        <button class="admin-tab active" onclick="switchMyTab('main',this)">Dashboard</button>
+        <button class="admin-tab" onclick="switchMyTab('orders',this)">My Orders</button>
+        <button class="admin-tab" onclick="switchMyTab('inventory',this)">Inventory</button>
+      </div>
+      <div id="my-tab-main">
+      <div class="page-header">
+        <div>
+          <h1>Rep Dashboard</h1>
+          <p>Your commissions, stores, and team</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm btn-green" onclick="showEnrollModal()">+ Enroll New Rep</button>
+        </div>
+      </div>
+
+      <!-- Commission Summary Cards -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">My Assigned Stores</div>
+          <div class="stat-value" id="stat-stores">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">My Store Revenue</div>
+          <div class="stat-value revenue" id="stat-store-rev">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">My Commission (10%)</div>
+          <div class="stat-value revenue" id="stat-my-commission">--</div>
+          <div class="stat-sub">From your assigned stores</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sponsor Bonus (5%)</div>
+          <div class="stat-value revenue" id="stat-sponsor-commission">--</div>
+          <div class="stat-sub">5% of your direct reps' commissions</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Monthly Earnings</div>
+          <div class="stat-value revenue" id="stat-total-earnings">--</div>
+        </div>
+      </div>
+
+      <!-- Commission Breakdown Info Box -->
+      <div class="chart-card" style="margin-bottom: 24px;">
+        <h3>How Your Commission Works</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px;">
+          <div>
+            <p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;font-weight:600;">Your Store Commission</p>
+            <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">You earn <strong>10%</strong> of monthly revenue from every store you're assigned to. This is your primary income stream.</p>
+          </div>
+          <div>
+            <p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;font-weight:600;">Sponsor Bonus</p>
+            <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">When you enroll a rep, you earn <strong>5% of their commission</strong> (not their revenue). This only applies to reps <em>you</em> directly enrolled — not reps they enroll.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="owner-grid">
+        <!-- My Stores -->
+        <div class="table-card">
+          <div class="table-toolbar"><h2>My Stores</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Store</th><th>Category</th><th>Revenue/mo</th><th>My Cut (10%)</th><th></th></tr></thead>
+              <tbody id="my-stores-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- My Direct Reps -->
+        <div class="table-card">
+          <div class="table-toolbar">
+            <h2>My Direct Reps</h2>
+            <div class="toolbar-controls">
+              <button class="btn btn-sm btn-green" onclick="showEnrollModal()">+ Enroll Rep</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Stores</th><th>Their Commission</th><th>My 5% Bonus</th></tr></thead>
+              <tbody id="downline-tbody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- end my-tab-main -->
+      <div id="my-tab-orders" style="display:none;">
+        <div class="page-header"><div><h1>My Orders</h1><p>Orders you've placed for yourself or your stores</p></div></div>
+        <div class="table-card">
+          <div class="table-toolbar"><h2>Order History</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order #</th><th>Date</th><th>For Store</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead>
+              <tbody id="my-orders-tbody"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="my-tab-inventory" style="display:none;">
+        <div class="page-header"><div><h1>Store Inventory</h1><p>Track product levels across your assigned stores</p></div></div>
+        <div id="inventory-content"><div class="loading" style="padding:40px;text-align:center;">Loading inventory...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Order Detail Modal -->
+  <div class="modal-overlay" id="my-order-detail-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:580px;">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Order Details</h2>
+      <div class="order-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Enroll Rep Modal -->
+  <div class="modal-overlay" id="enroll-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Enroll a New Rep</h2>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px;">This rep will be directly under you. You'll earn 5% of their commissions.</p>
+      <form onsubmit="handleEnrollRep(event)">
+        <div class="form-group"><label>Full Name</label><input type="text" name="name" required placeholder="Rep's full name"></div>
+        <div class="form-group"><label>Email</label><input type="email" name="email" required placeholder="rep@example.com"></div>
+        <div class="form-group"><label>Phone</label><input type="tel" name="phone" placeholder="555-0100"></div>
+        <div class="form-group"><label>Temporary Password</label><input type="password" name="password" required minlength="6" placeholder="At least 6 characters"></div>
+        <button type="submit" class="btn btn-green">Enroll Rep</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Profile Modal -->
+  <div class="modal-overlay" id="profile-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Change Password</h2>
+      <form onsubmit="handleChangePassword(event)">
+        <div class="form-group"><label>Current Password</label><input type="password" name="current_password" required></div>
+        <div class="form-group"><label>New Password</label><input type="password" name="new_password" required minlength="6"></div>
+        <div class="form-group"><label>Confirm New Password</label><input type="password" name="confirm_password" required minlength="6"></div>
+        <button type="submit" class="btn">Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>loadRepDashboard();</script>
+</body>
+</html>

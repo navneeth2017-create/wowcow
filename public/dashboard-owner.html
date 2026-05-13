@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WowCow - My Store</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>const saved=localStorage.getItem('dh_theme')||'light';document.documentElement.setAttribute('data-theme',saved);</script>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="topbar">
+      <div class="logo-mark" id="logo-container"></div>
+      <div class="user-info">
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></button>
+        <button class="btn-logout" onclick="showProfile()">Profile</button>
+        <span class="role-badge" id="user-role">Wholesaler</span>
+        <a href="/shop.html" style="padding:7px 16px;background:#2563eb;color:#fff;border-radius:7px;font-size:13px;font-weight:600;text-decoration:none;margin-right:8px;">🛒 Shop</a><button class="btn-logout" onclick="logout()">Sign Out</button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div style="display:flex;gap:8px;margin-bottom:24px;border-bottom:1px solid var(--border);">
+        <button class="admin-tab active" onclick="switchMyTab('main',this)">My Stores</button>
+        <button class="admin-tab" onclick="switchMyTab('orders',this)">My Orders</button>
+        <button class="admin-tab" onclick="switchMyTab('inventory',this)">Inventory</button>
+      </div>
+      <div id="my-tab-main">
+
+      <!-- Store picker (shown when owner has multiple stores) -->
+      <div id="store-picker" style="display:none;margin-bottom:24px;">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;">
+          <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;">Select a store to view:</p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;" id="store-picker-tabs"></div>
+        </div>
+      </div>
+
+      <div class="page-header">
+        <div>
+          <h1 id="store-page-title">My Stores</h1>
+          <p id="store-page-subtitle">Your wholesale store details and pricing</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm" onclick="showEditStore()">Edit Store Info</button>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Monthly Revenue</div>
+          <div class="stat-value revenue" id="store-revenue">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Network Average</div>
+          <div class="stat-value" id="stat-avg">--</div>
+          <div class="stat-sub" id="stat-comparison">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">vs Network Average</div>
+          <div class="comparison-bar">
+            <div class="bar-label">
+              <span id="bar-you">--</span>
+              <span id="bar-avg">--</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" id="comparison-bar-fill" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="owner-grid">
+        <div class="chart-card">
+          <h3>Revenue Trend (Last 8 Months)</h3>
+          <div style="height:280px;"><canvas id="chart-revenue"></canvas></div>
+        </div>
+
+        <div class="store-detail-card" style="max-width:none;">
+          <h2 id="store-name">Loading...</h2>
+          <div class="detail-row">
+            <span class="detail-label">Owner</span>
+            <span class="detail-value" id="store-owner-name">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Email</span>
+            <span class="detail-value" id="store-email">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Address</span>
+            <span class="detail-value" id="store-address">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Category</span>
+            <span class="detail-value" id="store-category">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Status</span>
+            <span class="detail-value" id="store-status">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Wholesale Price</span>
+            <span class="detail-value" id="store-wholesale">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Retail Price</span>
+            <span class="detail-value" id="store-retail">--</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Distribution Cost</span>
+            <span class="detail-value" id="store-dist-cost">--</span>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- end my-tab-main -->
+      <div id="my-tab-orders" style="display:none;">
+        <div class="page-header"><div><h1>My Orders</h1><p>Your order history</p></div></div>
+        <div class="table-card">
+          <div class="table-toolbar"><h2>Order History</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order #</th><th>Date</th><th>For Store</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead>
+              <tbody id="my-orders-tbody"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="my-tab-inventory" style="display:none;">
+        <div class="page-header"><div><h1>My Inventory</h1><p>Current product stock levels in your store</p></div></div>
+        <div id="inventory-content"><div class="loading" style="padding:40px;text-align:center;">Loading inventory...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Order Detail Modal -->
+  <div class="modal-overlay" id="my-order-detail-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="max-width:580px;">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Order Details</h2>
+      <div class="order-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Edit Store Modal -->
+  <div class="modal-overlay" id="edit-store-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Edit Store Info</h2>
+      <form onsubmit="handleEditStore(event)" id="edit-store-form">
+        <div class="form-group"><label>Store Name</label><input type="text" name="name" required></div>
+        <div class="form-group"><label>Owner Name</label><input type="text" name="owner_name" required></div>
+        <div class="form-group"><label>Email</label><input type="email" name="email" required></div>
+        <div class="form-group"><label>Address</label><input type="text" name="address"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+          <div class="form-group"><label>City</label><input type="text" name="city"></div>
+          <div class="form-group"><label>State</label><input type="text" name="state" maxlength="2"></div>
+          <div class="form-group"><label>Zip</label><input type="text" name="zip" maxlength="5"></div>
+        </div>
+        <div class="form-group"><label>Category</label><input type="text" name="category"></div>
+        <button type="submit" class="btn">Save Changes</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Profile Modal -->
+  <div class="modal-overlay" id="profile-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Change Password</h2>
+      <form onsubmit="handleChangePassword(event)">
+        <div class="form-group"><label>Current Password</label><input type="password" name="current_password" required></div>
+        <div class="form-group"><label>New Password</label><input type="password" name="new_password" required minlength="6"></div>
+        <div class="form-group"><label>Confirm New Password</label><input type="password" name="confirm_password" required minlength="6"></div>
+        <button type="submit" class="btn">Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>loadOwnerDashboard();</script>
+</body>
+</html>

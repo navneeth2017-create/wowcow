@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WowCow - Investor Dashboard</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>const saved=localStorage.getItem('dh_theme')||'light';document.documentElement.setAttribute('data-theme',saved);</script>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="topbar">
+      <div class="logo-mark" id="logo-container"></div>
+      <div class="user-info">
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></button>
+        <button class="btn-logout" onclick="showProfile()">Profile</button>
+        <span class="role-badge" id="user-role">Investor</span>
+        <button class="btn-logout" onclick="logout()">Sign Out</button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="page-header">
+        <div>
+          <h1>Portfolio Overview</h1>
+          <p>Store performance across the network</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm btn-outline" onclick="printReport()">Print Report</button>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Stores</div>
+          <div class="stat-value" id="stat-total">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Monthly Revenue</div>
+          <div class="stat-value revenue" id="stat-revenue">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg Revenue Per Store</div>
+          <div class="stat-value revenue" id="stat-avg">--</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>Revenue by Category</h3>
+          <div style="height:280px;"><canvas id="chart-category"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Stores by Category</h3>
+          <div style="height:280px;"><canvas id="chart-top"></canvas></div>
+        </div>
+      </div>
+
+      <div class="chart-card" style="margin-bottom:32px;">
+        <h3>Revenue Distribution</h3>
+        <div style="height:280px;"><canvas id="chart-distribution"></canvas></div>
+      </div>
+
+      <div class="performers-grid">
+        <div class="performer-card">
+          <h3>Top 10 Performers</h3>
+          <ul class="performer-list" id="top-performers"><li class="loading">Loading...</li></ul>
+        </div>
+        <div class="performer-card bottom">
+          <h3>Bottom 10 Performers</h3>
+          <ul class="performer-list" id="bottom-performers"><li class="loading">Loading...</li></ul>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-toolbar">
+          <h2>Store Revenue</h2>
+          <div class="toolbar-controls">
+            <input type="text" class="search-input" id="search-input" placeholder="Search stores..." oninput="investorSearchDebounced(this.value)">
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="name" onclick="sortInvestor('name')">Store Name</th>
+                <th data-sort="status" onclick="sortInvestor('status')">Status</th>
+                <th data-sort="monthly_revenue" onclick="sortInvestor('monthly_revenue')">Revenue/mo</th>
+              </tr>
+            </thead>
+            <tbody id="stores-tbody">
+              <tr><td colspan="3" class="loading">Loading stores...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer" id="table-footer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Modal -->
+  <div class="modal-overlay" id="profile-modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+      <h2>Change Password</h2>
+      <form onsubmit="handleChangePassword(event)">
+        <div class="form-group"><label>Current Password</label><input type="password" name="current_password" required></div>
+        <div class="form-group"><label>New Password</label><input type="password" name="new_password" required minlength="6"></div>
+        <div class="form-group"><label>Confirm New Password</label><input type="password" name="confirm_password" required minlength="6"></div>
+        <button type="submit" class="btn">Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>loadInvestorDashboard();</script>
+</body>
+</html>

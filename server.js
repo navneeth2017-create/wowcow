@@ -9,6 +9,29 @@ const { authenticate, authorize, JWT_SECRET } = require('./middleware/auth');
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// ── RATE LIMITING ─────────────────────────────────────────────────────────────
+// Simple in-memory rate limiter — no extra dependencies needed
+const _rateLimitMap = new Map();
+function rateLimit(maxRequests, windowMs) {
+  return (req, res, next) => {
+    const key = req.ip + req.path;
+    const now = Date.now();
+    const entry = _rateLimitMap.get(key) || { count: 0, start: now };
+    if (now - entry.start > windowMs) { entry.count = 0; entry.start = now; }
+    entry.count++;
+    _rateLimitMap.set(key, entry);
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Please wait and try again.' });
+    }
+    next();
+  };
+}
+// Clean up stale entries every 10 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  for (const [k, v] of _rateLimitMap) if (v.start < cutoff) _rateLimitMap.delete(k);
+}, 10 * 60 * 1000);
+
 // ── DB ────────────────────────────────────────────────────────────────────────
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
@@ -54,11 +77,14 @@ async function migrate() {
   if (dairyRows.length > 0) {
     const dairyIds = dairyRows.map(r => r.id);
     console.log(`🔄 Migrating ${dairyIds.length} dairy products to ADDY product line...`);
-    // Remove prices and inventory tied to dairy products, then the products themselves
-    await q(`DELETE FROM product_prices WHERE product_id = ANY($1)`, [dairyIds]);
+    // Delete in FK-safe order: order_items → orphaned orders → cart_items → inventory → prices → products
+    await q(`DELETE FROM order_items WHERE product_id = ANY($1)`, [dairyIds]);
+    // Clean up any orders that now have zero items
+    await q(`DELETE FROM orders WHERE id NOT IN (SELECT DISTINCT order_id FROM order_items)`);
+    await q(`DELETE FROM cart_items   WHERE product_id = ANY($1)`, [dairyIds]);
     await q(`DELETE FROM store_inventory WHERE product_id = ANY($1)`, [dairyIds]);
-    await q(`DELETE FROM cart_items WHERE product_id = ANY($1)`, [dairyIds]);
-    await q(`DELETE FROM products WHERE id = ANY($1)`, [dairyIds]);
+    await q(`DELETE FROM product_prices  WHERE product_id = ANY($1)`, [dairyIds]);
+    await q(`DELETE FROM products        WHERE id = ANY($1)`, [dairyIds]);
     console.log('  ✓ Old dairy products removed');
   }
 
@@ -154,7 +180,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', rateLimit(10, 60 * 1000), async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -164,10 +190,10 @@ app.post('/api/login', async (req, res) => {
     if (user.status === 'inactive') return res.status(403).json({ error: 'Your account has been deactivated.' });
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, store_id: user.store_id }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ token, role: user.role });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('Login error:', e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
-app.post('/api/signup', async (req, res) => {
+app.post('/api/signup', rateLimit(5, 60 * 1000), async (req, res) => {
   try {
     const { email, password, name, phone, role, store_name, address, city, state, zip, category } = req.body;
     if (!email || !password || !name || !role) return res.status(400).json({ error: 'Email, password, name, and role are required' });
@@ -235,7 +261,7 @@ app.post('/api/signup', async (req, res) => {
     );
 
     res.status(201).json({ success: true, message: 'Account request submitted. An admin will review and approve your account.' });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/me', authenticate, (req, res) => res.json(req.user));
@@ -249,21 +275,44 @@ app.patch('/api/profile', authenticate, async (req, res) => {
     if (!bcrypt.compareSync(current_password, user.password_hash)) return res.status(401).json({ error: 'Current password is incorrect' });
     await q('UPDATE users SET password_hash=$1 WHERE id=$2', [bcrypt.hashSync(new_password, 10), req.user.id]);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
-app.post('/api/forgot-password', async (req, res) => {
+app.post('/api/forgot-password', rateLimit(5, 15 * 60 * 1000), async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
     const user = await one("SELECT id,email,name FROM users WHERE email=$1 AND status='active'", [email.toLowerCase()]);
-    if (!user) return res.json({ success: true });
+    if (!user) return res.json({ success: true }); // don't reveal if email exists
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     await q('UPDATE password_resets SET used=1 WHERE user_id=$1', [user.id]);
     await q('INSERT INTO password_resets (user_id,code,expires_at) VALUES ($1,$2,$3)', [user.id, code, expires]);
-    res.json({ success: true, code, name: user.name || user.email });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+
+    if (resend) {
+      // Production: send code by email, never expose it in the response
+      try {
+        await resend.emails.send({
+          from: process.env.EMAIL_FROM || 'WowCow <notifications@wowcow.com>',
+          to: [user.email],
+          subject: 'Your WowCow password reset code',
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
+            <h2 style="color:#1e293b;">Password Reset</h2>
+            <p>Hi ${user.name || 'there'},</p>
+            <p>Your reset code is:</p>
+            <div style="font-size:40px;font-weight:800;letter-spacing:10px;color:#2563eb;text-align:center;padding:24px;background:#eff6ff;border-radius:10px;margin:20px 0;">${code}</div>
+            <p style="color:#64748b;font-size:13px;">This code expires in 15 minutes. If you didn't request this, ignore this email.</p>
+          </div>`
+        });
+      } catch(emailErr) {
+        console.error('Password reset email failed:', emailErr.message);
+      }
+      res.json({ success: true, name: user.name || user.email });
+    } else {
+      // Dev/no-email fallback: return code in response so the UI can display it
+      res.json({ success: true, code, name: user.name || user.email });
+    }
+  } catch(e) { res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/reset-password', async (req, res) => {
@@ -279,13 +328,13 @@ app.post('/api/reset-password', async (req, res) => {
     await q('UPDATE users SET password_hash=$1 WHERE id=$2', [bcrypt.hashSync(new_password, 10), user.id]);
     await q('UPDATE password_resets SET used=1 WHERE id=$1', [reset.id]);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── NOTIFICATION EMAILS ───────────────────────────────────────────────────────
 app.get('/api/notification-emails', authenticate, authorize('admin'), async (req, res) => {
   try { res.json(await all('SELECT * FROM notification_emails ORDER BY created_at ASC')); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/notification-emails', authenticate, authorize('admin'), async (req, res) => {
@@ -299,14 +348,14 @@ app.post('/api/notification-emails', authenticate, authorize('admin'), async (re
       [email.toLowerCase(), label || '']
     );
     res.status(201).json(result);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.delete('/api/notification-emails/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
     await q('DELETE FROM notification_emails WHERE id=$1', [req.params.id]);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── STORES ────────────────────────────────────────────────────────────────────
@@ -389,7 +438,7 @@ app.get('/api/stores', authenticate, async (req, res) => {
       page: pageNum, page_size: pageSize, total_pages: Math.ceil(totalFiltered/pageSize),
       by_category: byCategory, top10, bottom10, by_status: byStatus, distribution
     });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/stores/:id', authenticate, authorize('admin'), async (req, res) => {
@@ -397,7 +446,7 @@ app.get('/api/stores/:id', authenticate, authorize('admin'), async (req, res) =>
     const store = await one('SELECT * FROM stores WHERE id=$1', [req.params.id]);
     if (!store) return res.status(404).json({ error: 'Store not found' });
     res.json(store);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/stores', authenticate, authorize('admin'), async (req, res) => {
@@ -412,7 +461,7 @@ app.post('/api/stores', authenticate, authorize('admin'), async (req, res) => {
     );
     await logActivity('created', name, req.user.email);
     res.status(201).json(result);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/stores/:id', authenticate, async (req, res) => {
@@ -434,7 +483,7 @@ app.patch('/api/stores/:id', authenticate, async (req, res) => {
     const updated = await one(`UPDATE stores SET ${updates.join(',')} WHERE id=$${pi} RETURNING *`, params);
     await logActivity(req.body.status && req.body.status !== store.status ? 'status_changed' : 'updated', store.name, req.user.email);
     res.json(updated);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.delete('/api/stores/:id', authenticate, authorize('admin'), async (req, res) => {
@@ -445,7 +494,7 @@ app.delete('/api/stores/:id', authenticate, authorize('admin'), async (req, res)
     await q('DELETE FROM stores WHERE id=$1', [req.params.id]);
     await logActivity('deleted', store.name, req.user.email);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/stores/bulk-delete', authenticate, authorize('admin'), async (req, res) => {
@@ -458,7 +507,7 @@ app.post('/api/stores/bulk-delete', authenticate, authorize('admin'), async (req
     await q(`DELETE FROM stores WHERE id IN (${placeholders})`, ids);
     for (const s of stores) await logActivity('deleted', s.name, req.user.email);
     res.json({ success: true, deleted: ids.length });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── FILTERS / ACTIVITY / NOTES / CSV ─────────────────────────────────────────
@@ -467,19 +516,19 @@ app.get('/api/filters', authenticate, async (req, res) => {
     const categories = (await all('SELECT DISTINCT category FROM stores ORDER BY category')).map(r=>r.category);
     const states = (await all('SELECT DISTINCT state FROM stores ORDER BY state')).map(r=>r.state);
     res.json({ categories, states });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/activity', authenticate, authorize('admin'), async (req, res) => {
   try {
     const limit = Math.min(50, parseInt(req.query.limit)||10);
     res.json(await all('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT $1', [limit]));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/stores/:id/notes', authenticate, authorize('admin'), async (req, res) => {
   try { res.json(await all('SELECT * FROM store_notes WHERE store_id=$1 ORDER BY created_at DESC', [req.params.id])); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/stores/:id/notes', authenticate, authorize('admin'), async (req, res) => {
@@ -490,7 +539,7 @@ app.post('/api/stores/:id/notes', authenticate, authorize('admin'), async (req, 
     if (!store) return res.status(404).json({ error: 'Store not found' });
     const result = await one('INSERT INTO store_notes (store_id,note) VALUES ($1,$2) RETURNING *', [req.params.id, note.trim()]);
     res.status(201).json(result);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/export/csv', authenticate, authorize('admin'), async (req, res) => {
@@ -511,7 +560,7 @@ app.get('/api/export/csv', authenticate, authorize('admin'), async (req, res) =>
     res.setHeader('Content-Type','text/csv');
     res.setHeader('Content-Disposition','attachment; filename=wowcow-stores.csv');
     res.send([headers.join(','),...rows].join('\n'));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── USERS ─────────────────────────────────────────────────────────────────────
@@ -529,12 +578,12 @@ app.post('/api/users', authenticate, authorize('admin'), async (req, res) => {
     );
     await logActivity('created_user', `${name} (${role})`, req.user.email);
     res.status(201).json({ success: true, id: result.id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/users', authenticate, authorize('admin'), async (req, res) => {
   try { res.json(await all('SELECT id,email,name,phone,role,status,pricing_tier FROM users ORDER BY role,name')); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/users/:id/status', authenticate, authorize('admin'), async (req, res) => {
@@ -543,7 +592,7 @@ app.patch('/api/users/:id/status', authenticate, authorize('admin'), async (req,
     if (!['active','inactive'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
     await q('UPDATE users SET status=$1 WHERE id=$2', [status, req.params.id]);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/users/:id/stores', authenticate, authorize('admin'), async (req, res) => {
@@ -554,7 +603,7 @@ app.post('/api/users/:id/stores', authenticate, authorize('admin'), async (req, 
       await q('INSERT INTO owner_stores (owner_id,store_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, sid]);
     }
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/pending-users', authenticate, authorize('admin'), async (req, res) => {
@@ -566,7 +615,7 @@ app.get('/api/pending-users', authenticate, authorize('admin'), async (req, res)
        WHERE u.role IN ('store_owner','distributor','rep')
        ORDER BY u.status ASC, u.id DESC`
     ));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // Set/change pricing tier for any user
@@ -601,7 +650,7 @@ app.patch('/api/users/:id/pricing', authenticate, authorize('admin'), async (req
     await applyPricingTier(parseInt(req.params.id), tier, custom_prices);
     await logActivity('pricing_updated', user.name||user.email, req.user.email);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/users/:id/approve', authenticate, authorize('admin'), async (req, res) => {
@@ -614,7 +663,7 @@ app.patch('/api/users/:id/approve', authenticate, authorize('admin'), async (req
     if (tier) await applyPricingTier(parseInt(req.params.id), tier, custom_prices);
     await logActivity('approved', user.name||user.email, req.user.email);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/users/:id/reject', authenticate, authorize('admin'), async (req, res) => {
@@ -625,7 +674,7 @@ app.patch('/api/users/:id/reject', authenticate, authorize('admin'), async (req,
     if (user.store_id) await q("UPDATE stores SET status='inactive' WHERE id=$1", [user.store_id]);
     await logActivity('rejected', user.name||user.email, req.user.email);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── REPS ──────────────────────────────────────────────────────────────────────
@@ -664,7 +713,7 @@ app.get('/api/reps', authenticate, async (req, res) => {
       return res.json(reps);
     }
     res.status(403).json({ error: 'Access denied' });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/reps/enroll', authenticate, authorize('rep'), async (req, res) => {
@@ -691,7 +740,7 @@ app.post('/api/reps/enroll', authenticate, authorize('rep'), async (req, res) =>
     finally { client.release(); }
     await logActivity('enrolled_rep', name, req.user.email);
     res.status(201).json({ success: true, userId: newUserId });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/reps', authenticate, authorize('admin'), async (req, res) => {
@@ -715,7 +764,7 @@ app.post('/api/reps', authenticate, authorize('admin'), async (req, res) => {
     finally { client.release(); }
     await logActivity('created_rep', name, req.user.email);
     res.status(201).json({ success: true, userId: newUserId });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/reps/:id/stores', authenticate, authorize('admin'), async (req, res) => {
@@ -726,7 +775,7 @@ app.post('/api/reps/:id/stores', authenticate, authorize('admin'), async (req, r
       await q('INSERT INTO rep_store_assignments (rep_id,store_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, sid]);
     }
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── DISTRIBUTOR ───────────────────────────────────────────────────────────────
@@ -736,7 +785,7 @@ app.get('/api/distributor/stores', authenticate, authorize('distributor'), async
       'SELECT s.* FROM stores s INNER JOIN distributor_stores ds ON ds.store_id=s.id WHERE ds.distributor_id=$1 ORDER BY s.name',
       [req.user.id]
     ));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
@@ -750,7 +799,7 @@ app.get('/api/products', authenticate, async (req, res) => {
       return { ...p, my_price: price, all_prices: allPrices };
     }));
     res.json(result);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/products/all', authenticate, authorize('admin'), async (req, res) => {
@@ -761,7 +810,7 @@ app.get('/api/products/all', authenticate, authorize('admin'), async (req, res) 
       return { ...p, role_prices: prices };
     }));
     res.json(result);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/products', authenticate, authorize('admin'), async (req, res) => {
@@ -784,7 +833,7 @@ app.post('/api/products', authenticate, authorize('admin'), async (req, res) => 
     }
     await logActivity('created_product', name, req.user.email);
     res.status(201).json(p);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/products/:id', authenticate, authorize('admin'), async (req, res) => {
@@ -808,7 +857,7 @@ app.patch('/api/products/:id', authenticate, authorize('admin'), async (req, res
     }
     await logActivity('updated_product', name||p.name, req.user.email);
     res.json(updated);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/products/:id/price', authenticate, authorize('admin'), async (req, res) => {
@@ -821,7 +870,7 @@ app.patch('/api/products/:id/price', authenticate, authorize('admin'), async (re
       await q('INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3) ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price', [req.params.id, role, parseFloat(price)]);
     }
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.delete('/api/products/:id', authenticate, authorize('admin'), async (req, res) => {
@@ -831,7 +880,7 @@ app.delete('/api/products/:id', authenticate, authorize('admin'), async (req, re
     await q('DELETE FROM products WHERE id=$1', [req.params.id]);
     await logActivity('deleted_product', p.name, req.user.email);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── CART ──────────────────────────────────────────────────────────────────────
@@ -861,7 +910,7 @@ app.get('/api/cart', authenticate, async (req, res) => {
     const storeId = req.query.store_id ? parseInt(req.query.store_id) : null;
     const cart = await getOrCreateCart(req.user.id, storeId);
     res.json(await getCartWithItems(cart.id));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.post('/api/cart/add', authenticate, async (req, res) => {
@@ -883,7 +932,7 @@ app.post('/api/cart/add', authenticate, async (req, res) => {
       await q('INSERT INTO cart_items (cart_id,product_id,quantity,price_at_add) VALUES ($1,$2,$3,$4)', [cart.id, product_id, qty, price]);
     }
     res.json(await getCartWithItems(cart.id));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/cart/item/:id', authenticate, async (req, res) => {
@@ -894,7 +943,7 @@ app.patch('/api/cart/item/:id', authenticate, async (req, res) => {
     if (quantity <= 0) { await q('DELETE FROM cart_items WHERE id=$1', [req.params.id]); }
     else { await q('UPDATE cart_items SET quantity=$1 WHERE id=$2', [quantity, req.params.id]); }
     res.json(await getCartWithItems(item.cart_id));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.delete('/api/cart/item/:id', authenticate, async (req, res) => {
@@ -903,7 +952,7 @@ app.delete('/api/cart/item/:id', authenticate, async (req, res) => {
     if (!item || item.user_id !== req.user.id) return res.status(404).json({ error: 'Item not found' });
     await q('DELETE FROM cart_items WHERE id=$1', [req.params.id]);
     res.json(await getCartWithItems(item.cart_id));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.delete('/api/cart', authenticate, async (req, res) => {
@@ -914,7 +963,7 @@ app.delete('/api/cart', authenticate, async (req, res) => {
       : await one('SELECT * FROM carts WHERE user_id=$1 AND store_id IS NULL', [req.user.id]);
     if (cart) await q('DELETE FROM cart_items WHERE cart_id=$1', [cart.id]);
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── ORDERS ────────────────────────────────────────────────────────────────────
@@ -995,7 +1044,7 @@ app.post('/api/orders', authenticate, async (req, res) => {
     );
 
     res.status(201).json(order);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/orders', authenticate, async (req, res) => {
@@ -1009,7 +1058,7 @@ app.get('/api/orders', authenticate, async (req, res) => {
       return { ...o, items };
     }));
     res.json(result);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/orders/:id/status', authenticate, authorize('admin'), async (req, res) => {
@@ -1031,7 +1080,7 @@ app.patch('/api/orders/:id/status', authenticate, authorize('admin'), async (req
       }
     }
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── INVENTORY ─────────────────────────────────────────────────────────────────
@@ -1060,7 +1109,7 @@ app.get('/api/inventory/:store_id', authenticate, async (req, res) => {
       [storeId]
     );
     res.json({ store, inventory });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.get('/api/inventory', authenticate, async (req, res) => {
@@ -1092,7 +1141,7 @@ app.get('/api/inventory', authenticate, async (req, res) => {
        ORDER BY is_low DESC, si.quantity ASC, s.name`,
       storeIds
     ));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 app.patch('/api/inventory/:store_id/:product_id', authenticate, async (req, res) => {
@@ -1116,7 +1165,7 @@ app.patch('/api/inventory/:store_id/:product_id', authenticate, async (req, res)
       [storeId, req.params.product_id, quantity??null, low_stock_threshold??null]
     );
     res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
 // ── START ─────────────────────────────────────────────────────────────────────

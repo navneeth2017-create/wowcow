@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = 'distrohub-demo-secret-key';
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️  JWT_SECRET env var not set — using insecure default. Set it in Railway before going live.');
+}
+const JWT_SECRET = process.env.JWT_SECRET || 'wowcow-dev-fallback-change-before-launch';
 
 function authenticate(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1] || req.query.token;

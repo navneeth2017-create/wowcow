@@ -9,7 +9,7 @@ let _selectedPayment = 'card';
 let _storeAddress = null;
 
 async function initShop() {
-  const token = localStorage.getItem('dh_token');
+  const token = localStorage.getItem('wc_token');
   if (!token) { window.location.href = '/login.html'; return; }
 
   const me = await apiFetch('/api/me');

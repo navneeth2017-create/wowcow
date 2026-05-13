@@ -1,10 +1,10 @@
 const API = '';
 
-function getToken() { return localStorage.getItem('dh_token'); }
+function getToken() { return localStorage.getItem('wc_token'); }
 function getRole() { return localStorage.getItem('dh_role'); }
 
 function logout() {
-  localStorage.removeItem('dh_token');
+  localStorage.removeItem('wc_token');
   localStorage.removeItem('dh_role');
 
   // Build farewell overlay
@@ -114,7 +114,7 @@ const logoSVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7V17L12 2
 
 function renderLogo(container) {
   if (!container) return;
-  const token = localStorage.getItem('dh_token');
+  const token = localStorage.getItem('wc_token');
   const role = (token ? JSON.parse(atob(token.split('.')[1])).role : null);
   const roleFileMap = { admin: 'admin', investor: 'investor', store_owner: 'owner', distributor: 'distributor', rep: 'rep' };
   const dashFile = roleFileMap[role] || 'admin';
@@ -124,7 +124,7 @@ function renderLogo(container) {
 
 // --- Dark Mode ---
 function initTheme() {
-  const saved = localStorage.getItem('dh_theme') || 'light';
+  const saved = localStorage.getItem('wc_theme') || 'light';
   document.documentElement.setAttribute('data-theme', saved);
   updateThemeButton(saved);
 }
@@ -133,7 +133,7 @@ function toggleTheme() {
   const current = document.documentElement.getAttribute('data-theme');
   const next = current === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('dh_theme', next);
+  localStorage.setItem('wc_theme', next);
   updateThemeButton(next);
 }
 
@@ -294,7 +294,7 @@ async function handleLogin(e) {
       errorEl.style.display = 'block';
       return;
     }
-    localStorage.setItem('dh_token', data.token);
+    localStorage.setItem('wc_token', data.token);
     localStorage.setItem('dh_role', data.role);
     const t = data.token;
     switch (data.role) {

@@ -961,6 +961,11 @@ function switchTab(tab, btn) {
   document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
+  // Clear preorder count polling when leaving the products tab
+  if (tab !== 'products' && typeof _preorderRefreshInterval !== 'undefined') {
+    clearInterval(_preorderRefreshInterval);
+  }
+
   if (tab === 'pending') loadPendingApprovals();
   if (tab === 'reps') loadAdminReps();
   if (tab === 'users') loadUsersTab();
@@ -1355,9 +1360,9 @@ async function loadDistributorDashboard() {
 
   renderDistributorTable(_allDistStores);
 
-  const totalDistCost = _allDistStores.reduce((a, s) => a + (s.distribution_cost || 0), 0);
-  const avgWholesale = _allDistStores.length ? _allDistStores.reduce((a, s) => a + (s.wholesale_price || 0), 0) / _allDistStores.length : 0;
-  const avgRetail = _allDistStores.length ? _allDistStores.reduce((a, s) => a + (s.retail_price || 0), 0) / _allDistStores.length : 0;
+  const totalDistCost = _allDistStores.reduce((a, s) => a + (parseFloat(s.distribution_cost) || 0), 0);
+  const avgWholesale = _allDistStores.length ? _allDistStores.reduce((a, s) => a + (parseFloat(s.wholesale_price) || 0), 0) / _allDistStores.length : 0;
+  const avgRetail = _allDistStores.length ? _allDistStores.reduce((a, s) => a + (parseFloat(s.retail_price) || 0), 0) / _allDistStores.length : 0;
 
   animateValue(document.getElementById('stat-total'), _allDistStores.length);
   animateCurrency(document.getElementById('stat-dist-cost'), totalDistCost);
@@ -1580,7 +1585,14 @@ async function loadAdminOrders() {
     return;
   }
   const statusColors = { pending:'pending', processing:'pending', shipped:'active', delivered:'active', cancelled:'inactive' };
-  tbody.innerHTML = orders.map(o => `
+  tbody.innerHTML = orders.map(o => {
+    const inv = o.invoice;
+    const invStatus = inv?.invoice_status || 'unpaid';
+    // Auto-flag overdue: unpaid and past due date
+    const isOverdue = invStatus === 'unpaid' && inv?.due_date && new Date(inv.due_date) < new Date();
+    const displayStatus = isOverdue ? 'overdue' : invStatus;
+    const invBadgeClass = displayStatus === 'paid' ? 'active' : displayStatus === 'overdue' ? 'inactive' : 'pending';
+    return `
     <tr style="cursor:pointer;" onclick="showOrderDetail(${o.id})">
       <td style="font-weight:600">#${o.id}</td>
       <td style="font-size:12px">${new Date(o.created_at).toLocaleDateString()}</td>
@@ -1589,17 +1601,21 @@ async function loadAdminOrders() {
       <td style="font-size:12px">${o.items ? o.items.length + ' item(s)' : '—'}</td>
       <td class="revenue-cell">$${parseFloat(o.total).toFixed(2)}</td>
       <td>
-        <span class="status-badge ${o.payment_method === 'invoice' ? 'pending' : 'active'}">${o.payment_method === 'invoice' ? 'Invoice' : 'Card'}</span>
-        <span class="status-badge ${o.payment_status === 'paid' ? 'active' : 'pending'}" style="margin-left:4px;">${o.payment_status}</span>
+        ${inv ? `<span style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;">${esc(inv.invoice_number)}</span>` : ''}
+        <span class="status-badge ${invBadgeClass}" style="font-size:11px;">${displayStatus}</span>
       </td>
       <td><span class="status-badge ${statusColors[o.status] || 'pending'}">${o.status}</span></td>
       <td onclick="event.stopPropagation()">
-        <select onchange="updateOrderStatus(${o.id}, this.value)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);">
-          ${['pending','processing','shipped','delivered','cancelled'].map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
-        </select>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          <select onchange="updateOrderStatus(${o.id}, this.value)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);">
+            ${['pending','processing','shipped','delivered','cancelled'].map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+          </select>
+          ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 8px;" onclick="window.open('/api/invoices/${o.id}/print','_blank')">📄 Invoice</button>` : ''}
+          ${inv && displayStatus !== 'paid' ? `<button class="btn btn-sm btn-green" style="font-size:11px;padding:4px 8px;" onclick="markInvoicePaid(${o.id}, this)">Mark Paid</button>` : ''}
+        </div>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 
   // store orders globally for detail lookup
   window._adminOrders = orders;
@@ -1672,12 +1688,47 @@ function renderOrderDetailModal(o, isAdmin) {
     </div>
 
     ${o.notes ? `
-    <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;">
+    <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
       <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Order Notes</p>
       <p style="font-size:13px;color:var(--text-secondary);">${esc(o.notes)}</p>
     </div>` : ''}
+
+    ${o.invoice ? (() => {
+      const inv = o.invoice;
+      const isOverdue = inv.invoice_status === 'unpaid' && inv.due_date && new Date(inv.due_date) < new Date();
+      const status = isOverdue ? 'overdue' : inv.invoice_status;
+      const statusColor = status === 'paid' ? '#16a34a' : status === 'overdue' ? '#dc2626' : '#d97706';
+      const statusBg = status === 'paid' ? '#f0fdf4' : status === 'overdue' ? '#fef2f2' : '#fffbeb';
+      return `
+    <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <p style="font-size:13px;font-weight:600;color:var(--text);">Invoice</p>
+        <span style="background:${statusBg};color:${statusColor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:capitalize;">${status}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
+        <div><span style="color:var(--text-muted);">Invoice #</span><br><strong style="color:var(--text);">${esc(inv.invoice_number)}</strong></div>
+        <div><span style="color:var(--text-muted);">Due Date</span><br><strong style="color:var(--text);">${new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</strong></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-sm btn-outline" onclick="window.open('/api/invoices/${o.id}/print','_blank')" style="font-size:12px;">📄 View / Download Invoice</button>
+        ${isAdmin && status !== 'paid' ? `<button class="btn btn-sm btn-green" onclick="markInvoicePaid(${o.id}, this);closeModal();" style="font-size:12px;">✓ Mark as Paid</button>` : ''}
+      </div>
+    </div>`;
+    })() : ''}
   `;
   modal.classList.add('active');
+}
+
+async function markInvoicePaid(orderId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+  const result = await apiFetch(`/api/invoices/${orderId}/pay`, { method: 'PATCH' });
+  if (result?.success) {
+    showToast('Invoice marked as paid ✓', 'success');
+    loadAdminOrders();
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'Mark Paid'; }
+    showToast('Failed to update invoice', 'error');
+  }
 }
 
 async function updateOrderStatus(id, status) {
@@ -1710,17 +1761,29 @@ async function loadMyOrders(tbodyId) {
   }
 
   const statusColors = { pending:'pending', processing:'pending', shipped:'active', delivered:'active', cancelled:'inactive' };
-  tbody.innerHTML = orders.map(o => `
+  tbody.innerHTML = orders.map(o => {
+    const inv = o.invoice;
+    const invStatus = inv?.invoice_status || 'unpaid';
+    const isOverdue = invStatus === 'unpaid' && inv?.due_date && new Date(inv.due_date) < new Date();
+    const displayStatus = isOverdue ? 'overdue' : invStatus;
+    const invBadgeClass = displayStatus === 'paid' ? 'active' : displayStatus === 'overdue' ? 'inactive' : 'pending';
+    return `
     <tr style="cursor:pointer;" onclick="showMyOrderDetail(${o.id})">
       <td style="font-weight:600">#${o.id}</td>
       <td style="font-size:12px">${new Date(o.created_at).toLocaleDateString()}</td>
       <td>${esc(o.store_name || 'Personal')}</td>
       <td style="font-size:12px">${o.items ? o.items.length + ' item(s)' : '—'}</td>
       <td class="revenue-cell">$${parseFloat(o.total).toFixed(2)}</td>
-      <td><span class="status-badge ${o.payment_method==='invoice'?'pending':'active'}">${o.payment_method==='invoice'?'Invoice':'Card'}</span></td>
+      <td>
+        ${inv ? `<span style="font-size:11px;color:var(--text-muted);display:block;">${esc(inv.invoice_number)}</span>` : ''}
+        <span class="status-badge ${invBadgeClass}" style="font-size:11px;">${displayStatus}</span>
+      </td>
       <td><span class="status-badge ${statusColors[o.status]||'pending'}">${o.status}</span></td>
-    </tr>
-  `).join('');
+      <td onclick="event.stopPropagation()">
+        ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;" onclick="window.open('/api/invoices/${o.id}/print','_blank')">📄 Invoice</button>` : '—'}
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function showMyOrderDetail(orderId) {

@@ -10,9 +10,24 @@ const PRODUCT_TIERS = [
   { key: 'store_owner',        label: 'Wholesale / Store Owner' },
 ];
 
+let _preorderRefreshInterval = null;
+
 async function loadProductsTab() {
   const products = await apiFetch('/api/products/all');
   _allProducts = products || [];
+
+  // Auto-refresh preorder counts every 15s while on this tab
+  clearInterval(_preorderRefreshInterval);
+  _preorderRefreshInterval = setInterval(async () => {
+    const fresh = await apiFetch('/api/products/all');
+    if (!fresh) return;
+    _allProducts = fresh;
+    // Only re-render the preorder count cells — don't full-redraw to avoid flicker
+    fresh.forEach(p => {
+      const el = document.getElementById(`preorder-count-${p.id}`);
+      if (el) el.textContent = `👥 ${p.preorder_count || 0} interested`;
+    });
+  }, 15000);
 
   // Low stock warning banner
   const redProducts    = _allProducts.filter(p => p.active === 1 && p.stock <= 50);
@@ -98,7 +113,7 @@ function renderProductsTable() {
       ? `<img src="${p.image_url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;" onerror="this.outerHTML='<div style=\\'width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;\\'>💊</div>'">`
       : `<div style="width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;">💊</div>`;
     const preorderInfo = p.active === 2
-      ? `<span style="font-size:11px;color:#7c3aed;font-weight:600;display:block;margin-top:4px;">👥 ${p.preorder_count || 0} interested</span>`
+      ? `<span id="preorder-count-${p.id}" style="font-size:11px;color:#7c3aed;font-weight:600;display:block;margin-top:4px;">👥 ${parseInt(p.preorder_count) || 0} interested</span>`
       : '';
     return `
       <tr class="table-row-anim" style="animation-delay:${i * 30}ms">

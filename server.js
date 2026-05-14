@@ -46,6 +46,12 @@ async function all(text, params) { const r = await q(text, params); return r.row
 const { Resend } = require('resend');
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
+// ── STRIPE (activates automatically when STRIPE_SECRET_KEY env var is set) ──
+const Stripe = require('stripe');
+const stripe = process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
+if (stripe) console.log('💳 Stripe payment processing enabled');
+else console.log('📄 Invoice-only mode (add STRIPE_SECRET_KEY to enable card payments)');
+
 // ── EMAIL HELPER ──────────────────────────────────────────────────────────────
 async function sendNotification(subject, htmlBody) {
   if (!resend) return; // silently skip if no API key configured
@@ -818,10 +824,11 @@ app.get('/api/products', authenticate, async (req, res) => {
 
 app.get('/api/products/all', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const products = await all('SELECT * FROM products ORDER BY name');
+    const products = await all('SELECT * FROM products ORDER BY active DESC, name');
     const result = await Promise.all(products.map(async p => {
       const prices = await all('SELECT role,user_id,price FROM product_prices WHERE product_id=$1 AND user_id IS NULL', [p.id]);
-      return { ...p, role_prices: prices };
+      const preorder_count = parseInt((await one('SELECT COUNT(*) as c FROM preorders WHERE product_id=$1', [p.id]))?.c || 0);
+      return { ...p, role_prices: prices, preorder_count };
     }));
     res.json(result);
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
@@ -929,6 +936,192 @@ app.delete('/api/products/:id', authenticate, authorize('admin'), async (req, re
     await q('DELETE FROM products WHERE id=$1', [req.params.id]);
     await logActivity('deleted_product', p.name, req.user.email);
     res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+// ── CONFIG (frontend reads this to know if Stripe is active) ─────────────────
+app.get('/api/config', (req, res) => {
+  res.json({ stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
+});
+
+// ── INVOICE HELPERS ───────────────────────────────────────────────────────────
+async function generateInvoiceNumber() {
+  const year = new Date().getFullYear();
+  const count = await one('SELECT COUNT(*) as c FROM invoices');
+  const num = String(parseInt(count?.c || 0) + 1).padStart(4, '0');
+  return `WC-${year}-${num}`;
+}
+
+async function createInvoiceForOrder(orderId) {
+  const invoiceNumber = await generateInvoiceNumber();
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 30);
+  return await one(
+    'INSERT INTO invoices (order_id, invoice_number, due_date) VALUES ($1,$2,$3) RETURNING *',
+    [orderId, invoiceNumber, dueDate.toISOString().split('T')[0]]
+  );
+}
+
+// ── STRIPE PAYMENT ENDPOINTS ──────────────────────────────────────────────────
+app.post('/api/payment/intent', authenticate, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Card payments not configured. Please use invoice payment.' });
+  try {
+    const { amount_cents } = req.body;
+    if (!amount_cents || amount_cents < 50) return res.status(400).json({ error: 'Invalid amount' });
+    const intent = await stripe.paymentIntents.create({
+      amount: Math.round(amount_cents),
+      currency: 'usd',
+      automatic_payment_methods: { enabled: true },
+    });
+    res.json({ clientSecret: intent.client_secret });
+  } catch(e) { console.error('Stripe error:', e.message); res.status(500).json({ error: 'Payment processing error. Please try again.' }); }
+});
+
+app.post('/api/payment/confirm', authenticate, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Card payments not configured' });
+  try {
+    const { payment_intent_id, order_id } = req.body;
+    const intent = await stripe.paymentIntents.retrieve(payment_intent_id);
+    if (intent.status !== 'succeeded') return res.status(400).json({ error: 'Payment not completed' });
+    await q('UPDATE orders SET payment_status=$1 WHERE id=$2', ['paid', order_id]);
+    await q('UPDATE invoices SET payment_status=$1, paid_at=NOW(), stripe_payment_intent_id=$2 WHERE order_id=$3',
+      ['paid', payment_intent_id, order_id]);
+    res.json({ success: true });
+  } catch(e) { console.error('Stripe confirm error:', e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+// ── INVOICE ENDPOINTS ─────────────────────────────────────────────────────────
+app.get('/api/invoices/:orderId/print', authenticate, async (req, res) => {
+  try {
+    const { role, id: userId } = req.user;
+    const order = role === 'admin'
+      ? await one('SELECT o.*,u.name as user_name,u.email as user_email,u.phone as user_phone FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1', [req.params.orderId])
+      : await one('SELECT o.*,u.name as user_name,u.email as user_email,u.phone as user_phone FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1 AND o.user_id=$2', [req.params.orderId, userId]);
+    if (!order) return res.status(404).send('Invoice not found');
+    const invoice = await one('SELECT * FROM invoices WHERE order_id=$1', [req.params.orderId]);
+    if (!invoice) return res.status(404).send('Invoice not found');
+    const items = await all('SELECT oi.*,p.name,p.sku FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1', [req.params.orderId]);
+    const statusColor = invoice.payment_status === 'paid' ? '#16a34a' : invoice.payment_status === 'overdue' ? '#dc2626' : '#d97706';
+    const statusBg = invoice.payment_status === 'paid' ? '#f0fdf4' : invoice.payment_status === 'overdue' ? '#fef2f2' : '#fffbeb';
+    const statusLabel = invoice.payment_status.charAt(0).toUpperCase() + invoice.payment_status.slice(1);
+    const itemRows = items.map(i => `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;">${i.name}${i.sku ? `<span style="color:#94a3b8;font-size:11px;display:block;">${i.sku}</span>` : ''}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">${i.quantity}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;">$${parseFloat(i.unit_price).toFixed(2)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;">$${parseFloat(i.total_price).toFixed(2)}</td>
+      </tr>`).join('');
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1.0">
+      <title>Invoice ${invoice.invoice_number}</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1e293b; background: #f8fafc; }
+        .page { max-width: 780px; margin: 32px auto; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #1e40af, #2563eb); padding: 36px 40px; display: flex; justify-content: space-between; align-items: flex-start; }
+        .header-left h1 { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+        .header-left p { color: rgba(255,255,255,0.7); font-size: 13px; margin-top: 4px; }
+        .header-right { text-align: right; }
+        .invoice-num { font-size: 22px; font-weight: 700; color: #fff; }
+        .invoice-meta { color: rgba(255,255,255,0.75); font-size: 12px; margin-top: 4px; line-height: 1.8; }
+        .status-pill { display: inline-block; padding: 6px 16px; border-radius: 100px; font-size: 13px; font-weight: 700; background: ${statusBg}; color: ${statusColor}; margin-top: 8px; }
+        .body { padding: 36px 40px; }
+        .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 32px; }
+        .party-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
+        .party-name { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+        .party-detail { font-size: 13px; color: #64748b; line-height: 1.6; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        thead th { background: #f8fafc; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #64748b; text-align: left; }
+        thead th:last-child, thead th:nth-child(3), thead th:nth-child(2) { text-align: right; }
+        thead th:nth-child(2) { text-align: center; }
+        .totals { display: flex; justify-content: flex-end; }
+        .totals-box { width: 280px; }
+        .totals-row { display: flex; justify-content: space-between; font-size: 13px; color: #64748b; padding: 5px 0; }
+        .totals-total { display: flex; justify-content: space-between; font-size: 18px; font-weight: 800; color: #1e293b; padding: 14px 0 0; border-top: 2px solid #e2e8f0; margin-top: 8px; }
+        .totals-total span:last-child { color: #2563eb; }
+        .footer { background: #f8fafc; padding: 24px 40px; display: flex; justify-content: space-between; align-items: center; }
+        .footer-note { font-size: 12px; color: #94a3b8; }
+        .print-btn { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        @media print {
+          body { background: #fff; }
+          .page { box-shadow: none; border-radius: 0; margin: 0; }
+          .print-btn { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="page">
+        <div class="header">
+          <div class="header-left">
+            <h1>WowCow</h1>
+            <p>Distribution Platform</p>
+          </div>
+          <div class="header-right">
+            <div class="invoice-num">${invoice.invoice_number}</div>
+            <div class="invoice-meta">
+              Issued: ${new Date(invoice.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}<br>
+              Due: ${new Date(invoice.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
+            </div>
+            <div class="status-pill">${statusLabel}</div>
+          </div>
+        </div>
+        <div class="body">
+          <div class="parties">
+            <div>
+              <div class="party-label">From</div>
+              <div class="party-name">WowCow Distribution</div>
+              <div class="party-detail">notifications@wowcow.com<br>wowcow.com</div>
+            </div>
+            <div>
+              <div class="party-label">Bill To</div>
+              <div class="party-name">${order.user_name || order.user_email}</div>
+              <div class="party-detail">
+                ${order.user_email}<br>
+                ${order.user_phone ? order.user_phone + '<br>' : ''}
+                ${order.shipping_address}<br>
+                ${order.shipping_city}, ${order.shipping_state} ${order.shipping_zip}
+              </div>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <div class="totals">
+            <div class="totals-box">
+              <div class="totals-row"><span>Subtotal</span><span>$${parseFloat(order.subtotal).toFixed(2)}</span></div>
+              <div class="totals-row"><span>Shipping</span><span>${parseFloat(order.shipping_cost) === 0 ? 'FREE' : '$' + parseFloat(order.shipping_cost).toFixed(2)}</span></div>
+              <div class="totals-total"><span>Total Due</span><span>$${parseFloat(order.total).toFixed(2)}</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="footer">
+          <div class="footer-note">Payment due within 30 days of invoice date · Order #${order.id}</div>
+          <button class="print-btn" onclick="window.print()">⬇ Save as PDF</button>
+        </div>
+      </div>
+    </body></html>`;
+    res.send(html);
+  } catch(e) { console.error(e.message); res.status(500).send('Something went wrong'); }
+});
+
+app.patch('/api/invoices/:orderId/pay', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const inv = await one('SELECT * FROM invoices WHERE order_id=$1', [req.params.orderId]);
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+    await q('UPDATE invoices SET payment_status=$1, paid_at=NOW() WHERE order_id=$2', ['paid', req.params.orderId]);
+    await q('UPDATE orders SET payment_status=$1 WHERE id=$2', ['paid', req.params.orderId]);
+    res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+app.get('/api/invoices', authenticate, async (req, res) => {
+  try {
+    const { role, id: userId } = req.user;
+    const invoices = role === 'admin'
+      ? await all('SELECT i.*, o.total, o.user_id, u.name as user_name, u.email as user_email FROM invoices i JOIN orders o ON o.id=i.order_id JOIN users u ON u.id=o.user_id ORDER BY i.created_at DESC')
+      : await all('SELECT i.*, o.total FROM invoices i JOIN orders o ON o.id=i.order_id WHERE o.user_id=$1 ORDER BY i.created_at DESC', [userId]);
+    res.json(invoices);
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
@@ -1083,6 +1276,9 @@ app.post('/api/orders', authenticate, async (req, res) => {
 
     await logActivity('placed_order', `Order #${order.id}`, req.user.email);
 
+    // Auto-generate invoice
+    const invoice = await createInvoiceForOrder(order.id);
+
     // Email notification
     const itemList = items.map(i => `<tr><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;">${i.name}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">${i.quantity}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right;">$${(parseFloat(i.price_at_add)*i.quantity).toFixed(2)}</td></tr>`).join('');
     await sendNotification(
@@ -1113,7 +1309,7 @@ app.post('/api/orders', authenticate, async (req, res) => {
       </div>`
     );
 
-    res.status(201).json(order);
+    res.status(201).json({ ...order, invoice_number: invoice?.invoice_number });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
@@ -1125,7 +1321,8 @@ app.get('/api/orders', authenticate, async (req, res) => {
       : await all('SELECT o.*,s.name as store_name FROM orders o LEFT JOIN stores s ON s.id=o.store_id WHERE o.user_id=$1 ORDER BY o.created_at DESC', [userId]);
     const result = await Promise.all(orders.map(async o => {
       const items = await all('SELECT oi.*,p.name FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1', [o.id]);
-      return { ...o, items };
+      const invoice = await one('SELECT invoice_number, payment_status as invoice_status, due_date, paid_at FROM invoices WHERE order_id=$1', [o.id]);
+      return { ...o, items, invoice };
     }));
     res.json(result);
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }

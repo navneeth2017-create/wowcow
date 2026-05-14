@@ -76,6 +76,7 @@ async function loadProducts() {
   const products = await apiFetch('/api/products');
   _products = products || [];
   renderProducts();
+  await initPayment();
 }
 
 function renderProducts() {
@@ -279,10 +280,56 @@ function showCheckout() {
   document.getElementById('checkout-modal').classList.add('active');
 }
 
+// ── PAYMENT / STRIPE ──────────────────────────────────────────────────────────
+let _stripe = null;
+let _stripeCardElement = null;
+let _stripeActive = false;
+
+async function initPayment() {
+  try {
+    const config = await apiFetch('/api/config');
+    if (config?.stripePublishableKey && typeof Stripe !== 'undefined') {
+      _stripe = Stripe(config.stripePublishableKey);
+      _stripeActive = true;
+      const cardSub = document.getElementById('card-option-sub');
+      if (cardSub) cardSub.textContent = 'Pay now securely';
+    } else {
+      // Stripe not configured — disable card option
+      const payCard = document.getElementById('pay-card');
+      if (payCard) {
+        payCard.style.opacity = '0.5';
+        payCard.style.cursor = 'not-allowed';
+        payCard.onclick = null;
+        const cardSub = document.getElementById('card-option-sub');
+        if (cardSub) cardSub.textContent = 'Coming soon';
+      }
+      // Auto-select invoice
+      selectPayment('invoice');
+    }
+  } catch(e) {
+    selectPayment('invoice');
+  }
+}
+
 function selectPayment(method) {
+  if (method === 'card' && !_stripeActive) return;
   _selectedPayment = method;
   document.getElementById('pay-card').classList.toggle('selected', method === 'card');
   document.getElementById('pay-invoice').classList.toggle('selected', method === 'invoice');
+
+  const cardWrap = document.getElementById('stripe-card-wrap');
+  if (method === 'card' && _stripeActive) {
+    cardWrap.style.display = 'block';
+    if (!_stripeCardElement) {
+      const elements = _stripe.elements();
+      _stripeCardElement = elements.create('card', {
+        style: { base: { fontSize: '15px', color: '#1e293b', '::placeholder': { color: '#94a3b8' } } }
+      });
+      _stripeCardElement.mount('#stripe-card-element');
+    }
+  } else {
+    cardWrap.style.display = 'none';
+  }
 }
 
 async function placeOrder() {
@@ -292,29 +339,61 @@ async function placeOrder() {
   const zip = document.getElementById('ship-zip').value.trim();
   if (!addr || !city || !state || !zip) { showToast('Please fill in the complete shipping address', 'error'); return; }
 
-  const body = {
-    store_id: _currentStoreId || null,
-    payment_method: _selectedPayment,
-    shipping_name: document.getElementById('ship-name').value.trim(),
-    shipping_address: addr,
-    shipping_city: city,
-    shipping_state: state,
-    shipping_zip: zip,
-    notes: document.getElementById('order-notes').value.trim()
-  };
+  const placeBtn = document.querySelector('#checkout-modal .btn-green');
+  if (placeBtn) { placeBtn.disabled = true; placeBtn.textContent = 'Processing...'; }
 
-  const order = await apiFetch('/api/orders', { method: 'POST', body: JSON.stringify(body) });
-  if (order && order.id) {
-    document.getElementById('checkout-modal').classList.remove('active');
-    const msg = _selectedPayment === 'invoice'
-      ? `Order #${order.id} placed! An invoice will be sent to you on net-30 terms. Total: $${parseFloat(order.total).toFixed(2)}`
-      : `Order #${order.id} confirmed! Payment of $${parseFloat(order.total).toFixed(2)} processed.`;
-    document.getElementById('confirm-msg').textContent = msg;
-    document.getElementById('confirm-modal').classList.add('active');
-    _cart = { items: [], total: 0 };
-    renderCart();
-  } else if (order && order.error) {
-    showToast(order.error, 'error');
+  try {
+    // If paying by card with Stripe, create payment intent first
+    let stripePaymentIntentId = null;
+    if (_selectedPayment === 'card' && _stripeActive && _stripeCardElement) {
+      const subtotal = (_cart.items || []).reduce((a, i) => a + i.price_at_add * i.quantity, 0);
+      const shipping = subtotal > 500 ? 0 : 15;
+      const totalCents = Math.round((subtotal + shipping) * 100);
+      const intentRes = await apiFetch('/api/payment/intent', { method: 'POST', body: JSON.stringify({ amount_cents: totalCents }) });
+      if (!intentRes?.clientSecret) { showToast('Card payment error. Please try invoice instead.', 'error'); return; }
+
+      const { error: stripeError, paymentIntent } = await _stripe.confirmCardPayment(intentRes.clientSecret, {
+        payment_method: { card: _stripeCardElement }
+      });
+      if (stripeError) {
+        const errEl = document.getElementById('stripe-error');
+        if (errEl) { errEl.textContent = stripeError.message; errEl.style.display = 'block'; }
+        showToast(stripeError.message, 'error');
+        return;
+      }
+      stripePaymentIntentId = paymentIntent.id;
+    }
+
+    const body = {
+      store_id: _currentStoreId || null,
+      payment_method: _selectedPayment,
+      stripe_payment_intent_id: stripePaymentIntentId,
+      shipping_name: document.getElementById('ship-name').value.trim(),
+      shipping_address: addr, shipping_city: city, shipping_state: state, shipping_zip: zip,
+      notes: document.getElementById('order-notes').value.trim()
+    };
+
+    const order = await apiFetch('/api/orders', { method: 'POST', body: JSON.stringify(body) });
+    if (order && order.id) {
+      // If card payment, confirm with server to update invoice
+      if (stripePaymentIntentId) {
+        await apiFetch('/api/payment/confirm', { method: 'POST', body: JSON.stringify({ payment_intent_id: stripePaymentIntentId, order_id: order.id }) });
+      }
+      document.getElementById('checkout-modal').classList.remove('active');
+      const invoiceNote = order.invoice_number ? ` · Invoice ${order.invoice_number}` : '';
+      const msg = _selectedPayment === 'invoice'
+        ? `Order #${order.id} placed!${invoiceNote} — Invoice will be due in 30 days. Total: $${parseFloat(order.total).toFixed(2)}`
+        : `Order #${order.id} confirmed! Payment of $${parseFloat(order.total).toFixed(2)} processed.`;
+      document.getElementById('confirm-msg').textContent = msg;
+      document.getElementById('confirm-modal').classList.add('active');
+      _cart = { items: [], total: 0 };
+      _stripeCardElement = null;
+      renderCart();
+    } else if (order && order.error) {
+      showToast(order.error, 'error');
+    }
+  } finally {
+    if (placeBtn) { placeBtn.disabled = false; placeBtn.textContent = 'Place Order'; }
   }
 }
 

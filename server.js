@@ -91,7 +91,7 @@ async function sendNotification(subject, htmlBody) {
     if (!recipients.length) return;
     const to = recipients.map(r => r.email);
     await resend.emails.send({
-      from: 'WowCow <notifications@wowcow.com>',
+      from: (process.env.EMAIL_FROM || 'WowCow Distributors <notifications@wowcowdistributors.com>').replace(/\n/g,' ').trim(),
       to,
       subject,
       html: htmlBody
@@ -353,7 +353,7 @@ app.post('/api/forgot-password', rateLimit(5, 15 * 60 * 1000), async (req, res) 
       // Production: send code by email, never expose it in the response
       try {
         await resend.emails.send({
-          from: process.env.EMAIL_FROM || 'WowCow <notifications@wowcow.com>',
+          from: (process.env.EMAIL_FROM || 'WowCow Distributors <notifications@wowcowdistributors.com>').replace(/\n/g,' ').trim(),
           to: [user.email],
           subject: 'Your WowCow password reset code',
           html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
@@ -928,7 +928,7 @@ app.patch('/api/products/:id', authenticate, authorize('admin'), async (req, res
       for (const user of preorders) {
         try {
           await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'WowCow <notifications@wowcow.com>',
+            from: (process.env.EMAIL_FROM || 'WowCow Distributors <notifications@wowcowdistributors.com>').replace(/\n/g,' ').trim(),
             to: [user.email],
             subject: `${productName} is now available — WowCow`,
             html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;">
@@ -1135,7 +1135,7 @@ app.get('/api/invoices/:orderId/print', authenticate, async (req, res) => {
             <div>
               <div class="party-label">From</div>
               <div class="party-name">WowCow Distribution</div>
-              <div class="party-detail">notifications@wowcow.com<br>wowcow.com</div>
+              <div class="party-detail">notifications@wowcowdistributors.com<br>wowcowdistributors.com</div>
             </div>
             <div>
               <div class="party-label">Bill To</div>

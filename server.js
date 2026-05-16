@@ -153,6 +153,17 @@ async function migrate() {
     console.log('🌱 No users found — running seed...');
     require('./db/seed');
   }
+
+  // Create production admin account if it doesn't exist
+  const prodAdmin = await one("SELECT id FROM users WHERE email='admin@wowcowdistributors.com'");
+  if (!prodAdmin) {
+    const hash = bcrypt.hashSync('DanteNavLoveWowcow26!', 10);
+    await q(
+      "INSERT INTO users (email, name, phone, role, password_hash, status) VALUES ($1,$2,$3,$4,$5,'active')",
+      ['admin@wowcowdistributors.com', 'Admin', '', 'admin', hash]
+    );
+    console.log('✅ Production admin account created: admin@wowcowdistributors.com');
+  }
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────

@@ -1610,7 +1610,7 @@ async function loadAdminOrders() {
           <select onchange="updateOrderStatus(${o.id}, this.value)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);">
             ${['pending','processing','shipped','delivered','cancelled'].map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
           </select>
-          ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 8px;" onclick="window.open('/api/invoices/${o.id}/print','_blank')">📄 Invoice</button>` : ''}
+          ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 8px;" onclick="window.open('/api/invoices/'+o.id+'/print?token='+getToken(),'_blank')">📄 Invoice</button>` : ''}
           ${inv && displayStatus !== 'paid' ? `<button class="btn btn-sm btn-green" style="font-size:11px;padding:4px 8px;" onclick="markInvoicePaid(${o.id}, this)">Mark Paid</button>` : ''}
         </div>
       </td>
@@ -1710,7 +1710,7 @@ function renderOrderDetailModal(o, isAdmin) {
         <div><span style="color:var(--text-muted);">Due Date</span><br><strong style="color:var(--text);">${new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</strong></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-sm btn-outline" onclick="window.open('/api/invoices/${o.id}/print','_blank')" style="font-size:12px;">📄 View / Download Invoice</button>
+        <button class="btn btn-sm btn-outline" onclick="window.open('/api/invoices/'+o.id+'/print?token='+getToken(),'_blank')" style="font-size:12px;">📄 View / Download Invoice</button>
         ${isAdmin && status !== 'paid' ? `<button class="btn btn-sm btn-green" onclick="markInvoicePaid(${o.id}, this);closeModal();" style="font-size:12px;">✓ Mark as Paid</button>` : ''}
       </div>
     </div>`;
@@ -1780,7 +1780,7 @@ async function loadMyOrders(tbodyId) {
       </td>
       <td><span class="status-badge ${statusColors[o.status]||'pending'}">${o.status}</span></td>
       <td onclick="event.stopPropagation()">
-        ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;" onclick="window.open('/api/invoices/${o.id}/print','_blank')">📄 Invoice</button>` : '—'}
+        ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;" onclick="window.open('/api/invoices/'+o.id+'/print?token='+getToken(),'_blank')">📄 Invoice</button>` : '—'}
       </td>
     </tr>`;
   }).join('');
@@ -1813,6 +1813,35 @@ let _inventoryData = [];
 let _inventorySearch = '';
 let _inventorySort = 'low'; // 'low' | 'name' | 'stock-asc' | 'stock-desc'
 let _inventoryShowLowOnly = false;
+
+function reorderLowStock(storeId) {
+  const store = _inventoryData.find ? null : null; // _inventoryData is flat rows
+  const storeRows = _inventoryData.filter(r => r.store_id === storeId);
+  const lowItems = storeRows.filter(r => r.is_low);
+  const storeName = storeRows[0]?.store_name || 'this store';
+
+  if (lowItems.length === 0) {
+    // No low items — just go to shop normally
+    window.location.href = `/shop.html?store_id=${storeId}`;
+    return;
+  }
+
+  // Store low items in sessionStorage for shop to pick up
+  const reorderData = {
+    store_id: storeId,
+    store_name: storeName,
+    items: lowItems.map(r => ({
+      product_id: r.product_id,
+      product_name: r.product_name,
+      current_qty: r.quantity,
+      threshold: r.low_stock_threshold,
+      // Suggest restocking to 2× threshold, minimum 1
+      suggested_qty: Math.max(1, (r.low_stock_threshold * 2) - r.quantity)
+    }))
+  };
+  sessionStorage.setItem('wc_reorder', JSON.stringify(reorderData));
+  window.location.href = `/shop.html?store_id=${storeId}`;
+}
 
 async function loadInventory() {
   const el = document.getElementById('inventory-content');
@@ -1934,7 +1963,7 @@ function renderInventoryStores() {
             <span id="inv-low-indicator-${store.id}">${lowItems.length > 0
               ? `<span style="font-size:12px;font-weight:600;color:#dc2626;">⚠ ${lowItems.length} low</span>`
               : `<span style="font-size:12px;color:#16a34a;">✓ All stocked</span>`}</span>
-            <a href="/shop.html?store_id=${store.id}" style="padding:6px 14px;background:#2563eb;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">🛒 Order</a>
+            <a onclick="reorderLowStock(${store.id})" href="#" style="padding:6px 14px;background:#2563eb;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;">🛒 Order</a>
           </div>
         </div>
         <div class="table-wrap">

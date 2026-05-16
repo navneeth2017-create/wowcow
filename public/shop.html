@@ -186,6 +186,22 @@
   <div class="modal-overlay" id="confirm-modal">
     <div class="modal" style="text-align:center;">
       <div style="font-size:56px;margin-bottom:16px;">✅</div>
+
+  <!-- Low Stock Reorder Modal -->
+  <div class="modal-overlay" id="reorder-modal">
+    <div class="modal" style="max-width:480px;">
+      <button class="close-btn" onclick="document.getElementById('reorder-modal').classList.remove('active')">&times;</button>
+      <div style="font-size:36px;text-align:center;margin-bottom:8px;">⚠️</div>
+      <h2 style="text-align:center;margin-bottom:6px;">Low Stock Detected</h2>
+      <p id="reorder-store-name" style="text-align:center;font-size:13px;color:var(--text-muted);margin-bottom:20px;"></p>
+      <div id="reorder-items-list" style="margin-bottom:20px;"></div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;text-align:center;">Quantities are suggested based on your low stock threshold. You can adjust before checkout.</p>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline" style="flex:1;" onclick="document.getElementById('reorder-modal').classList.remove('active')">Skip, browse manually</button>
+        <button class="btn btn-green" style="flex:1;" onclick="confirmReorder()">✓ Add to Cart</button>
+      </div>
+    </div>
+  </div>
       <h2>Order Placed!</h2>
       <p id="confirm-msg" style="color:var(--text-secondary);margin:12px 0 24px;"></p>
       <button class="btn" onclick="closeModal();location.reload()">Continue Shopping</button>

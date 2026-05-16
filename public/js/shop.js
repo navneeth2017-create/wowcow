@@ -77,6 +77,7 @@ async function loadProducts() {
   _products = products || [];
   renderProducts();
   await initPayment();
+  checkReorderIntent(); // Show low stock reorder modal if coming from inventory
 }
 
 function renderProducts() {
@@ -149,6 +150,63 @@ async function notifyMe(productId) {
     if (btn) { btn.disabled = false; btn.textContent = '🔔 Notify Me When Available'; }
     showToast('Something went wrong. Try again.', 'error');
   }
+}
+
+// ── LOW STOCK REORDER ─────────────────────────────────────────────────────────
+let _pendingReorderItems = [];
+
+function checkReorderIntent() {
+  const raw = sessionStorage.getItem('wc_reorder');
+  if (!raw) return;
+  sessionStorage.removeItem('wc_reorder');
+  let reorderData;
+  try { reorderData = JSON.parse(raw); } catch { return; }
+  if (!reorderData?.items?.length) return;
+
+  _pendingReorderItems = reorderData.items;
+
+  // Render the modal
+  const storeLabel = document.getElementById('reorder-store-name');
+  if (storeLabel) storeLabel.textContent = `${reorderData.items.length} item${reorderData.items.length > 1 ? 's are' : ' is'} running low at ${esc(reorderData.store_name)}`;
+
+  const list = document.getElementById('reorder-items-list');
+  if (list) {
+    list.innerHTML = reorderData.items.map((item, i) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.product_name)}</div>
+          <div style="font-size:11px;color:var(--red);margin-top:2px;">Only ${item.current_qty} left in stock</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <label style="font-size:11px;color:var(--text-muted);">Qty:</label>
+          <input type="number" min="1" value="${item.suggested_qty}" id="reorder-qty-${i}"
+            style="width:56px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);font-size:13px;text-align:center;">
+        </div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('reorder-modal').classList.add('active');
+}
+
+async function confirmReorder() {
+  document.getElementById('reorder-modal').classList.remove('active');
+  let addedCount = 0;
+  for (let i = 0; i < _pendingReorderItems.length; i++) {
+    const item = _pendingReorderItems[i];
+    const qty = parseInt(document.getElementById(`reorder-qty-${i}`)?.value) || item.suggested_qty;
+    const product = _products.find(p => p.id === item.product_id);
+    if (!product || product.active !== 1) continue; // skip coming soon or inactive
+    const body = { product_id: item.product_id, quantity: qty };
+    if (_currentStoreId) body.store_id = _currentStoreId;
+    const cart = await apiFetch('/api/cart/add', { method: 'POST', body: JSON.stringify(body) });
+    if (cart) { _cart = cart; addedCount++; }
+  }
+  renderCart();
+  if (addedCount > 0) {
+    showToast(`Added ${addedCount} low-stock item${addedCount > 1 ? 's' : ''} to your cart ✓`, 'success');
+  }
+  _pendingReorderItems = [];
 }
 
 function changeQty(productId, delta) {

@@ -320,6 +320,41 @@ app.post('/api/signup', rateLimit(5, 60 * 1000), async (req, res) => {
       </div>`
     );
 
+    // Send confirmation email to the new user
+    if (resend) {
+      try {
+        await resend.emails.send({
+          from: (process.env.EMAIL_FROM || 'WowCow Distributors <notifications@wowcowdistributors.com>').replace(/\n/g,' ').trim(),
+          to: [email.toLowerCase()],
+          subject: 'We received your application — WowCow Distributors',
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#1e40af,#2563eb);padding:32px 28px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.7);">WowCow Distributors</p>
+              <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;">Application Received</h1>
+            </div>
+            <div style="padding:32px 28px;">
+              <p style="font-size:15px;color:#1e293b;margin:0 0 16px;">Hi ${name},</p>
+              <p style="font-size:14px;color:#475569;margin:0 0 16px;">Thanks for applying to become a <strong>${roleLabel}</strong> partner with WowCow Distributors. We've received your application and our team will review it shortly.</p>
+              <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:20px;margin:24px 0;text-align:center;">
+                <p style="font-size:13px;font-weight:700;color:#16a34a;margin:0 0 4px;">✓ Application Submitted</p>
+                <p style="font-size:12px;color:#64748b;margin:0;">You'll receive another email once your account is approved.</p>
+              </div>
+              <p style="font-size:14px;color:#475569;margin:0 0 8px;">What happens next:</p>
+              <ul style="font-size:13px;color:#64748b;margin:0 0 24px;padding-left:20px;line-height:2;">
+                <li>Our team reviews your application</li>
+                <li>You'll get an email when you're approved</li>
+                <li>Log in and start placing orders</li>
+              </ul>
+              <p style="font-size:13px;color:#94a3b8;margin:0;">Questions? Reply to this email or contact us at <a href="mailto:admin@wowcowdistributors.com" style="color:#2563eb;">admin@wowcowdistributors.com</a></p>
+            </div>
+            <div style="background:#f8fafc;padding:16px 28px;text-align:center;font-size:12px;color:#94a3b8;">
+              © 2026 WowCow Distributors · <a href="https://wowcowdistributors.com/terms.html" style="color:#94a3b8;">Terms</a> · <a href="https://wowcowdistributors.com/privacy.html" style="color:#94a3b8;">Privacy</a>
+            </div>
+          </div>`
+        });
+      } catch(emailErr) { console.error('Signup confirmation email failed:', emailErr.message); }
+    }
+
     res.status(201).json({ success: true, message: 'Account request submitted. An admin will review and approve your account.' });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
@@ -722,6 +757,34 @@ app.patch('/api/users/:id/approve', authenticate, authorize('admin'), async (req
     const { tier, custom_prices } = req.body || {};
     if (tier) await applyPricingTier(parseInt(req.params.id), tier, custom_prices);
     await logActivity('approved', user.name||user.email, req.user.email);
+
+    // Send approval email to user
+    if (resend) {
+      try {
+        const roleLabel = user.role === 'store_owner' ? 'Wholesaler' : user.role === 'distributor' ? 'Distributor' : 'Sales Rep';
+        await resend.emails.send({
+          from: (process.env.EMAIL_FROM || 'WowCow Distributors <notifications@wowcowdistributors.com>').replace(/\n/g,' ').trim(),
+          to: [user.email],
+          subject: '✅ Your WowCow account is approved!',
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#15803d,#16a34a);padding:32px 28px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.8);">WowCow Distributors</p>
+              <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;">You're Approved! 🎉</h1>
+            </div>
+            <div style="padding:32px 28px;">
+              <p style="font-size:15px;color:#1e293b;margin:0 0 16px;">Hi ${user.name || 'there'},</p>
+              <p style="font-size:14px;color:#475569;margin:0 0 24px;">Your <strong>${roleLabel}</strong> account has been approved. You can now log in and start placing orders.</p>
+              <div style="text-align:center;margin:28px 0;">
+                <a href="https://wowcowdistributors.com/login.html" style="background:#2563eb;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">Log In to Your Account →</a>
+              </div>
+              <p style="font-size:13px;color:#94a3b8;margin:0;text-align:center;">Questions? Contact us at <a href="mailto:admin@wowcowdistributors.com" style="color:#2563eb;">admin@wowcowdistributors.com</a></p>
+            </div>
+            <div style="background:#f8fafc;padding:16px 28px;text-align:center;font-size:12px;color:#94a3b8;">© 2026 WowCow Distributors</div>
+          </div>`
+        });
+      } catch(emailErr) { console.error('Approval email failed:', emailErr.message); }
+    }
+
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
@@ -733,6 +796,31 @@ app.patch('/api/users/:id/reject', authenticate, authorize('admin'), async (req,
     await q("UPDATE users SET status='inactive' WHERE id=$1", [req.params.id]);
     if (user.store_id) await q("UPDATE stores SET status='inactive' WHERE id=$1", [user.store_id]);
     await logActivity('rejected', user.name||user.email, req.user.email);
+
+    // Send rejection email
+    if (resend) {
+      try {
+        await resend.emails.send({
+          from: (process.env.EMAIL_FROM || 'WowCow Distributors <notifications@wowcowdistributors.com>').replace(/\n/g,' ').trim(),
+          to: [user.email],
+          subject: 'Update on your WowCow application',
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            <div style="background:#1e293b;padding:32px 28px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.5);">WowCow Distributors</p>
+              <h1 style="margin:0;font-size:24px;font-weight:800;color:#ffffff;">Application Update</h1>
+            </div>
+            <div style="padding:32px 28px;">
+              <p style="font-size:15px;color:#1e293b;margin:0 0 16px;">Hi ${user.name || 'there'},</p>
+              <p style="font-size:14px;color:#475569;margin:0 0 16px;">Thank you for your interest in partnering with WowCow Distributors. Unfortunately, we're unable to approve your application at this time.</p>
+              <p style="font-size:14px;color:#475569;margin:0 0 24px;">If you believe this is an error or would like more information, please reach out to us directly.</p>
+              <p style="font-size:13px;color:#94a3b8;margin:0;text-align:center;">Contact us at <a href="mailto:admin@wowcowdistributors.com" style="color:#2563eb;">admin@wowcowdistributors.com</a></p>
+            </div>
+            <div style="background:#f8fafc;padding:16px 28px;text-align:center;font-size:12px;color:#94a3b8;">© 2026 WowCow Distributors</div>
+          </div>`
+        });
+      } catch(emailErr) { console.error('Rejection email failed:', emailErr.message); }
+    }
+
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });

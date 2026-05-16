@@ -178,6 +178,30 @@ async function migrate() {
     await q('UPDATE products SET image_url=$1 WHERE sku=$2', [fix.url, fix.sku]);
   }
 
+  // Backfill invoices for any orders that don't have one yet
+  const ordersWithoutInvoice = await all(`
+    SELECT o.id, o.created_at FROM orders o
+    LEFT JOIN invoices i ON i.order_id = o.id
+    WHERE i.id IS NULL
+    ORDER BY o.id ASC
+  `);
+  if (ordersWithoutInvoice.length > 0) {
+    console.log(`🧾 Backfilling invoices for ${ordersWithoutInvoice.length} existing orders...`);
+    for (const order of ordersWithoutInvoice) {
+      const year = new Date(order.created_at).getFullYear();
+      const count = await one('SELECT COUNT(*) as c FROM invoices');
+      const num = String(parseInt(count?.c || 0) + 1).padStart(4, '0');
+      const invoiceNumber = `WC-${year}-${num}`;
+      const dueDate = new Date(order.created_at);
+      dueDate.setDate(dueDate.getDate() + 30);
+      await q(
+        'INSERT INTO invoices (order_id, invoice_number, due_date) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+        [order.id, invoiceNumber, dueDate.toISOString().split('T')[0]]
+      );
+    }
+    console.log('  ✓ Invoice backfill complete');
+  }
+
   // Seed admin if no users exist yet
   const existing = await one('SELECT id FROM users LIMIT 1');
   if (!existing) {

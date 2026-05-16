@@ -17,6 +17,7 @@
     "bcryptjs": "^2.4.3",
     "@faker-js/faker": "^8.4.1",
     "resend": "^3.2.0",
-    "stripe": "^14.21.0"
+    "stripe": "^14.21.0",
+    "web-push": "^3.6.7"
   }
 }

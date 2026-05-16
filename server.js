@@ -9,6 +9,14 @@ const { authenticate, authorize, JWT_SECRET } = require('./middleware/auth');
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// ── WWW REDIRECT ──────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (req.headers.host && req.headers.host.startsWith('www.')) {
+    return res.redirect(301, `https://${req.headers.host.slice(4)}${req.url}`);
+  }
+  next();
+});
+
 // ── RATE LIMITING ─────────────────────────────────────────────────────────────
 // Simple in-memory rate limiter — no extra dependencies needed
 const _rateLimitMap = new Map();
@@ -51,6 +59,29 @@ const Stripe = require('stripe');
 const stripe = process.env.STRIPE_SECRET_KEY ? Stripe(process.env.STRIPE_SECRET_KEY) : null;
 if (stripe) console.log('💳 Stripe payment processing enabled');
 else console.log('📄 Invoice-only mode (add STRIPE_SECRET_KEY to enable card payments)');
+
+// ── WEB PUSH NOTIFICATIONS ────────────────────────────────────────────────────
+const webpush = require('web-push');
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || 'BDgZsDCilhapnLmxI8TIFc5KiZLPmdnLwaW7kluTozXvDqo237jLLiKaWac86rtM0ZDymkCr-KpatLntmYvXM5c';
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'ywl9LZOtPOzH3-QGIotbvz4SHljJ8QUf0EGPVvudvak';
+const VAPID_EMAIL   = process.env.VAPID_EMAIL       || 'mailto:admin@wowcowdistributors.com';
+webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
+
+async function sendPushToAdmins(title, body, url) {
+  try {
+    const admins = await all("SELECT ps.subscription FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.role='admin'");
+    for (const row of admins) {
+      try {
+        await webpush.sendNotification(row.subscription, JSON.stringify({ title, body, url }));
+      } catch(e) {
+        if (e.statusCode === 410) {
+          // Subscription expired — remove it
+          await q('DELETE FROM push_subscriptions WHERE subscription=$1', [row.subscription]);
+        }
+      }
+    }
+  } catch(e) { console.error('Push notification error:', e.message); }
+}
 
 // ── EMAIL HELPER ──────────────────────────────────────────────────────────────
 async function sendNotification(subject, htmlBody) {
@@ -950,9 +981,32 @@ app.delete('/api/products/:id', authenticate, authorize('admin'), async (req, re
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
-// ── CONFIG (frontend reads this to know if Stripe is active) ─────────────────
+// ── CONFIG (frontend reads this to know if Stripe and Push are active) ────────
 app.get('/api/config', (req, res) => {
-  res.json({ stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
+  res.json({
+    stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+    vapidPublicKey: VAPID_PUBLIC
+  });
+});
+
+// ── PUSH NOTIFICATION ENDPOINTS ───────────────────────────────────────────────
+app.post('/api/push/subscribe', authenticate, async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription) return res.status(400).json({ error: 'Subscription required' });
+    await q(
+      'INSERT INTO push_subscriptions (user_id, subscription) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET subscription=EXCLUDED.subscription',
+      [req.user.id, JSON.stringify(subscription)]
+    );
+    res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong.' }); }
+});
+
+app.delete('/api/push/unsubscribe', authenticate, async (req, res) => {
+  try {
+    await q('DELETE FROM push_subscriptions WHERE user_id=$1', [req.user.id]);
+    res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong.' }); }
 });
 
 // ── INVOICE HELPERS ───────────────────────────────────────────────────────────
@@ -1289,6 +1343,13 @@ app.post('/api/orders', authenticate, async (req, res) => {
 
     // Auto-generate invoice
     const invoice = await createInvoiceForOrder(order.id);
+
+    // Push notification to admins
+    sendPushToAdmins(
+      '🛒 New Order Received',
+      `Order #${order.id} — $${parseFloat(order.total).toFixed(2)} from ${req.user.email}`,
+      '/dashboard-admin.html'
+    );
 
     // Email notification
     const itemList = items.map(i => `<tr><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;">${i.name}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">${i.quantity}</td><td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;text-align:right;">$${(parseFloat(i.price_at_add)*i.quantity).toFixed(2)}</td></tr>`).join('');

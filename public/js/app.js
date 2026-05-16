@@ -1,5 +1,75 @@
 const API = '';
 
+// ── PUSH NOTIFICATIONS ────────────────────────────────────────────────────────
+let _vapidPublicKey = null;
+
+async function initPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const config = await apiFetch('/api/config');
+    _vapidPublicKey = config?.vapidPublicKey;
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    const existing = await reg.pushManager.getSubscription();
+    updatePushBellUI(!!existing);
+  } catch(e) { console.log('Push init failed:', e.message); }
+}
+
+function updatePushBellUI(isSubscribed) {
+  const btn = document.getElementById('push-bell-btn');
+  if (!btn) return;
+  if (isSubscribed) {
+    btn.style.background = 'var(--accent-bg)';
+    btn.style.borderColor = 'var(--accent)';
+    btn.title = 'Order notifications ON — click to disable';
+    btn.textContent = '🔔';
+  } else {
+    btn.style.background = 'none';
+    btn.style.borderColor = 'var(--border)';
+    btn.title = 'Click to enable order notifications';
+    btn.textContent = '🔕';
+  }
+}
+
+async function togglePushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showToast('Push notifications not supported in this browser', 'error');
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      await existing.unsubscribe();
+      await apiFetch('/api/push/unsubscribe', { method: 'DELETE' });
+      updatePushBellUI(false);
+      showToast('Order notifications disabled', 'success');
+    } else {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showToast('Please allow notifications in your browser settings', 'error');
+        return;
+      }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(_vapidPublicKey)
+      });
+      await apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: sub }) });
+      updatePushBellUI(true);
+      showToast('✓ Order notifications enabled! You\'ll be notified of new orders.', 'success');
+    }
+  } catch(e) {
+    console.error('Push toggle error:', e);
+    showToast('Could not update notification settings', 'error');
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
 function getToken() { return localStorage.getItem('wc_token'); }
 function getRole() { return localStorage.getItem('dh_role'); }
 
@@ -318,6 +388,7 @@ async function loadAdminDashboard() {
   window._userRole = 'admin';
   initTheme();
   initSessionTimeout();
+  initPushNotifications();
   document.getElementById('user-role').textContent = 'Admin';
   document.getElementById('user-role').className = 'role-badge admin';
   renderLogo(document.getElementById('logo-container'));

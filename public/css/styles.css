@@ -211,7 +211,7 @@ body {
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   padding: 0 32px;
-  height: 80px;
+  height: 108px;
   display: flex;
   align-items: center;
   justify-content: space-between;

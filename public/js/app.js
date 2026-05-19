@@ -184,12 +184,12 @@ function renderLogo(container) {
   const href = token ? `/dashboard-${dashFile}.html?t=${token}` : '/login.html';
   container.innerHTML = `
     <a href="${href}" style="display:flex;align-items:center;text-decoration:none;cursor:pointer;" title="Go to dashboard">
-      <div class="wc-logo-wrap" onclick="cowWingFlutter(this)" style="position:relative;display:inline-flex;align-items:center;height:72px;">
-        <svg class="wc-halo" viewBox="0 0 40 10" style="position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:30px;animation:haloFloat 2s ease-in-out infinite;">
-          <ellipse cx="20" cy="5" rx="18" ry="4" fill="none" stroke="#FFD700" stroke-width="2.5" opacity="0.95"/>
-          <ellipse cx="20" cy="5" rx="18" ry="4" fill="none" stroke="#FFA500" stroke-width="1" opacity="0.4"/>
+      <div class="wc-logo-wrap" onclick="cowWingFlutter(this)" style="position:relative;display:inline-flex;align-items:center;height:100px;">
+        <svg class="wc-halo" viewBox="0 0 34 8" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:26px;animation:haloFloat 2s ease-in-out infinite;">
+          <ellipse cx="17" cy="4" rx="15" ry="3.2" fill="none" stroke="#FFD700" stroke-width="2" opacity="0.95"/>
+          <ellipse cx="17" cy="4" rx="15" ry="3.2" fill="none" stroke="#FFA500" stroke-width="0.8" opacity="0.4"/>
         </svg>
-        <img src="/images/logo.png" alt="WowCow Distributors" class="wc-logo-img" style="height:72px;width:auto;object-fit:contain;transition:transform 0.1s;" draggable="false">
+        <img src="/images/logo.png" alt="WowCow Distributors" class="wc-logo-img" style="height:100px;width:auto;object-fit:contain;transition:transform 0.1s;" draggable="false">
       </div>
     </a>`;
 }

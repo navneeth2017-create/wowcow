@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WowCow Distribution — Energy &amp; Focus Supplements</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/images/favicon-cow.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
   <style>
@@ -29,7 +29,20 @@
     }
     nav.scrolled { border-color: var(--border); background: rgba(255,255,255,0.97); }
     .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-    .nav-logo-icon {
+    @keyframes haloFloat {
+      0%, 100% { transform: translateX(-50%) translateY(0px); opacity: 0.9; }
+      50%       { transform: translateX(-50%) translateY(-4px); opacity: 1; }
+    }
+    @keyframes wingFlutter {
+      0%   { transform: scale(1) rotate(0deg); }
+      15%  { transform: scale(1.06) rotate(-2deg); }
+      30%  { transform: scale(1.08) rotate(2deg); }
+      45%  { transform: scale(1.06) rotate(-1.5deg); }
+      60%  { transform: scale(1.04) rotate(1deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    .wing-flutter { animation: wingFlutter 0.5s ease-out forwards; }
+    .wc-logo-wrap:hover .wc-logo-img { filter: brightness(1.05); }
       width: 36px; height: 36px; background: var(--blue); border-radius: 9px;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
@@ -237,15 +250,14 @@
 <body>
 
   <nav id="nav">
-    <a href="/index.html" class="nav-logo">
-      <div class="nav-logo-icon">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="2" fill="none"/>
-          <path d="M2 7L12 12M12 12L22 7M12 12V22" stroke="white" stroke-width="2"/>
-          <path d="M7 4.5L17 9.5" stroke="white" stroke-width="1.5" opacity="0.5"/>
+    <a href="/index.html" class="nav-logo" style="text-decoration:none;">
+      <div class="wc-logo-wrap" onclick="cowWingFlutter(this)" style="position:relative;display:inline-flex;align-items:center;height:56px;">
+        <svg viewBox="0 0 60 14" style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:44px;animation:haloFloat 2s ease-in-out infinite;">
+          <ellipse cx="30" cy="7" rx="28" ry="6" fill="none" stroke="#FFD700" stroke-width="3" opacity="0.9"/>
+          <ellipse cx="30" cy="7" rx="28" ry="6" fill="none" stroke="#FFA500" stroke-width="1" opacity="0.4"/>
         </svg>
+        <img src="/images/logo.png" alt="WowCow Distributors" class="wc-logo-img" style="height:56px;width:auto;object-fit:contain;" draggable="false">
       </div>
-      <span class="nav-logo-text">Wow<span>Cow</span></span>
     </a>
     <div class="nav-actions">
       <a href="/login.html" class="btn-nav-login">Log In</a>
@@ -359,14 +371,8 @@
     <div class="footer-inner">
       <div class="footer-top">
         <div class="footer-brand">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:0;">
-            <div class="nav-logo-icon" style="width:32px;height:32px;">
-              <svg viewBox="0 0 24 24" fill="none" style="width:17px;height:17px;">
-                <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="white" stroke-width="2" fill="none"/>
-                <path d="M2 7L12 12M12 12L22 7M12 12V22" stroke="white" stroke-width="2"/>
-              </svg>
-            </div>
-            <span class="footer-logo-text">Wow<span>Cow</span></span>
+          <div style="margin-bottom:12px;">
+            <img src="/images/logo.png" alt="WowCow Distributors" style="height:64px;width:auto;object-fit:contain;">
           </div>
           <p>Premium energy and focus supplement distribution for independent retailers. Top brands, fair pricing, fast delivery.</p>
         </div>
@@ -425,7 +431,14 @@
     });
 
     // Products
-    const products = [
+    function cowWingFlutter(el) {
+      const img = el.querySelector('.wc-logo-img');
+      if (!img) return;
+      img.classList.remove('wing-flutter');
+      void img.offsetWidth;
+      img.classList.add('wing-flutter');
+      img.addEventListener('animationend', () => img.classList.remove('wing-flutter'), { once: true });
+    }
       { name:'ADDY Focus Capsules — 15ct', desc:'Clinically studied whole green coffee powder (WGCP) capsules. Sustained focus and energy with no crash. High-impulse sell at checkout.', tag:'Focus Caps', img:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop', delay:0 },
       { name:'ADDY Focus Capsules — 60ct', desc:'The full-size bottle for repeat customers. Same WGCP formula, better per-unit margin. Strong re-order velocity.', tag:'Focus Caps', img:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=600&auto=format&fit=crop&q=80', delay:80 },
       { name:'ADDY Energy Shot — Blue Razz', desc:'Single-serve energy shot in Blue Raspberry. All-natural, no crash. Ideal placement near registers and cooler doors.', tag:'Energy Shot', img:'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop', delay:160 },

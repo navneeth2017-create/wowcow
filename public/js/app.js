@@ -182,7 +182,25 @@ function renderLogo(container) {
   const roleFileMap = { admin: 'admin', investor: 'investor', store_owner: 'owner', distributor: 'distributor', rep: 'rep' };
   const dashFile = roleFileMap[role] || 'admin';
   const href = token ? `/dashboard-${dashFile}.html?t=${token}` : '/login.html';
-  container.innerHTML = `<a href="${href}" style="display:flex;align-items:center;gap:10px;text-decoration:none;cursor:pointer;" title="Go to dashboard"><div class="logo-icon">${logoSVG}</div><span class="logo-text">Wow<span>Cow</span></span></a>`;
+  container.innerHTML = `
+    <a href="${href}" style="display:flex;align-items:center;text-decoration:none;cursor:pointer;" title="Go to dashboard">
+      <div class="wc-logo-wrap" onclick="cowWingFlutter(this)" style="position:relative;display:inline-flex;align-items:center;height:52px;">
+        <svg class="wc-halo" viewBox="0 0 60 14" style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);width:44px;animation:haloFloat 2s ease-in-out infinite;">
+          <ellipse cx="30" cy="7" rx="28" ry="6" fill="none" stroke="#FFD700" stroke-width="3" opacity="0.9"/>
+          <ellipse cx="30" cy="7" rx="28" ry="6" fill="none" stroke="#FFA500" stroke-width="1" opacity="0.4"/>
+        </svg>
+        <img src="/images/logo.png" alt="WowCow Distributors" class="wc-logo-img" style="height:52px;width:auto;object-fit:contain;transition:transform 0.1s;" draggable="false">
+      </div>
+    </a>`;
+}
+
+function cowWingFlutter(el) {
+  const img = el.querySelector('.wc-logo-img');
+  if (!img) return;
+  img.classList.remove('wing-flutter');
+  void img.offsetWidth;
+  img.classList.add('wing-flutter');
+  img.addEventListener('animationend', () => img.classList.remove('wing-flutter'), { once: true });
 }
 
 // --- Dark Mode ---

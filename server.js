@@ -1093,6 +1093,14 @@ app.delete('/api/products/:id', authenticate, authorize('admin'), async (req, re
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
+// ── PUBLIC ENDPOINTS (no auth) ────────────────────────────────────────────────
+app.get('/api/products/public', async (req, res) => {
+  try {
+    const products = await all('SELECT id, name, description, image_url, sku FROM products WHERE active=1 ORDER BY id ASC');
+    res.json(products);
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong.' }); }
+});
+
 // ── CONFIG (frontend reads this to know if Stripe and Push are active) ────────
 app.get('/api/config', (req, res) => {
   res.json({

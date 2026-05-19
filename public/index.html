@@ -69,7 +69,7 @@
     .hero {
       min-height: 100vh; display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      text-align: center; padding: 120px 24px 80px;
+      text-align: center; padding: 160px 24px 80px;
       background: var(--cream); position: relative; overflow: hidden;
     }
     .hero::before {
@@ -430,7 +430,7 @@
       });
     });
 
-    // Products
+    // Products — load live from API so admin changes reflect here
     function cowWingFlutter(el) {
       const img = el.querySelector('.wc-logo-img');
       if (!img) return;
@@ -439,35 +439,37 @@
       img.classList.add('wing-flutter');
       img.addEventListener('animationend', () => img.classList.remove('wing-flutter'), { once: true });
     }
-      { name:'ADDY Focus Capsules — 15ct', desc:'Clinically studied whole green coffee powder (WGCP) capsules. Sustained focus and energy with no crash. High-impulse sell at checkout.', tag:'Focus Caps', img:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop', delay:0 },
-      { name:'ADDY Focus Capsules — 60ct', desc:'The full-size bottle for repeat customers. Same WGCP formula, better per-unit margin. Strong re-order velocity.', tag:'Focus Caps', img:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=600&auto=format&fit=crop&q=80', delay:80 },
-      { name:'ADDY Energy Shot — Blue Razz', desc:'Single-serve energy shot in Blue Raspberry. All-natural, no crash. Ideal placement near registers and cooler doors.', tag:'Energy Shot', img:'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop', delay:160 },
-      { name:'ADDY Energy Shot — Strawberry', desc:'Single-serve energy shot in Strawberry. Clean energy formula — the same trusted ADDY brand your customers already know.', tag:'Energy Shot', img:'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&auto=format&fit=crop', delay:240 },
-      { name:'ADDY Energy Gummies', desc:'Chewable energy and focus gummies. Great for customers who prefer a no-pill format. Strong crossover appeal with the capsule line.', tag:'Gummies', img:'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=600&auto=format&fit=crop', delay:320 },
-    ];
 
-    const grid = document.getElementById('products-grid');
-    grid.innerHTML = products.map(p => `
-      <div class="product-card" style="animation-delay:${p.delay}ms;">
-        <div class="product-img-wrap">
-          <img src="${p.img}" alt="${p.name}" loading="lazy"
-            onload="this.parentElement.classList.add('loaded')"
-            onerror="this.parentElement.classList.add('failed')">
-          <span class="product-img-fallback">📦</span>
-        </div>
-        <div class="product-body">
-          <span class="product-tag">${p.tag}</span>
-          <div class="product-name">${p.name}</div>
-          <div class="product-desc">${p.desc}</div>
-          <a href="/login.html" class="product-cta" onclick="sessionStorage.setItem('open_signup','1')">
-            Inquire about pricing
-            <svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </a>
-        </div>
-      </div>
-    `).join('');
-
-    document.querySelectorAll('.product-card').forEach(el => observer.observe(el));
+    async function loadLandingProducts() {
+      const grid = document.getElementById('products-grid');
+      try {
+        const products = await fetch('/api/products/public').then(r => r.json());
+        if (!products || !products.length) return;
+        grid.innerHTML = products.map((p, i) => `
+          <div class="product-card" style="animation-delay:${i * 80}ms;">
+            <div class="product-img-wrap">
+              <img src="${p.image_url || ''}" alt="${p.name}" loading="lazy"
+                onload="this.parentElement.classList.add('loaded')"
+                onerror="this.parentElement.classList.add('failed')">
+              <span class="product-img-fallback">💊</span>
+            </div>
+            <div class="product-body">
+              <span class="product-tag">${p.sku || 'Product'}</span>
+              <div class="product-name">${p.name}</div>
+              <div class="product-desc">${p.description || ''}</div>
+              <a href="/login.html" class="product-cta" onclick="sessionStorage.setItem('open_signup','1')">
+                Inquire about pricing
+                <svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </a>
+            </div>
+          </div>
+        `).join('');
+        document.querySelectorAll('.product-card').forEach(el => observer.observe(el));
+      } catch(e) {
+        console.log('Could not load products:', e.message);
+      }
+    }
+    loadLandingProducts();
   </script>
 </body>
 </html>

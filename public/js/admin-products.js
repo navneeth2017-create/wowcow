@@ -198,21 +198,29 @@ function openCropModal() {
   const cropImg = document.getElementById('crop-source');
   modal.style.display = 'flex';
 
-  // Destroy any existing cropper first
   if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
 
-  // Remove old src to force onload to fire even for same/cached data URLs
   cropImg.src = '';
   cropImg.onload = () => {
     _cropperInstance = new Cropper(cropImg, {
       aspectRatio: 1,
-      viewMode: 2,
-      autoCropArea: 0.9,
+      viewMode: 0,           // 0 = no restrictions, lets you zoom out freely
+      autoCropArea: 0.75,
       responsive: true,
       background: true,
+      zoomOnWheel: true,
+      ready() {
+        // Zoom out to show the full image on load
+        const cd = this.cropper.getCanvasData();
+        const cont = this.cropper.getContainerData();
+        const fitScale = Math.min(cont.width / cd.naturalWidth, cont.height / cd.naturalHeight) * 0.85;
+        this.cropper.zoomTo(fitScale);
+        // Reset slider
+        const slider = document.getElementById('crop-zoom-slider');
+        if (slider) slider.value = 0;
+      }
     });
   };
-  // Set src AFTER onload is assigned
   cropImg.src = src;
 }
 
@@ -220,13 +228,34 @@ function closeCropModal() {
   document.getElementById('crop-modal').style.display = 'none';
   if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
   _cropSourceDataUrl = null;
-  // Reset file input so same file can be re-selected
   const fi = document.getElementById('pf-image-file');
   if (fi) fi.value = '';
 }
 
 function setCropRatio(ratio) {
   if (_cropperInstance) _cropperInstance.setAspectRatio(ratio);
+}
+
+function cropZoomSlider(val) {
+  if (!_cropperInstance) return;
+  // val is -50 to 50; map to zoom delta from base
+  const delta = val / 100;
+  const imgData = _cropperInstance.getImageData();
+  const base = Math.min(
+    _cropperInstance.getContainerData().width / imgData.naturalWidth,
+    _cropperInstance.getContainerData().height / imgData.naturalHeight
+  ) * 0.85;
+  _cropperInstance.zoomTo(base + delta);
+}
+
+function resetCropZoom() {
+  if (!_cropperInstance) return;
+  const imgData = _cropperInstance.getImageData();
+  const cont = _cropperInstance.getContainerData();
+  const base = Math.min(cont.width / imgData.naturalWidth, cont.height / imgData.naturalHeight) * 0.85;
+  _cropperInstance.zoomTo(base);
+  const slider = document.getElementById('crop-zoom-slider');
+  if (slider) slider.value = 0;
 }
 
 function applyCrop() {

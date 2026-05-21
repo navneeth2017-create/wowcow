@@ -331,21 +331,37 @@
           </div>
 
 <!-- ── CROP MODAL ─────────────────────────────────────────────────────── -->
-<div id="crop-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;">
-  <div style="background:var(--bg-card);border-radius:16px;padding:24px;width:min(92vw,560px);display:flex;flex-direction:column;gap:16px;">
+<div id="crop-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;">
+  <div style="background:var(--bg-card);border-radius:16px;padding:24px;width:min(94vw,580px);display:flex;flex-direction:column;gap:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h3 style="margin:0;font-size:16px;color:var(--text);">✂️ Crop Image</h3>
-      <button type="button" onclick="closeCropModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">×</button>
+      <button type="button" onclick="closeCropModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);">×</button>
     </div>
-    <div style="max-height:380px;overflow:hidden;border-radius:8px;background:#000;">
+
+    <!-- Cropper area -->
+    <div style="height:340px;overflow:hidden;border-radius:8px;background:#111;position:relative;">
       <img id="crop-source" style="display:block;max-width:100%;">
     </div>
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-      <button type="button" onclick="setCropRatio(1)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">1:1 Square</button>
-      <button type="button" onclick="setCropRatio(4/3)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">4:3</button>
-      <button type="button" onclick="setCropRatio(16/9)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">16:9</button>
-      <button type="button" onclick="setCropRatio(NaN)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">Free</button>
+
+    <!-- Zoom controls -->
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">Zoom</span>
+      <button type="button" onclick="if(_cropperInstance)_cropperInstance.zoom(-0.15)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:18px;line-height:1;">−</button>
+      <input type="range" id="crop-zoom-slider" min="-50" max="50" value="0" oninput="cropZoomSlider(this.value)" style="flex:1;accent-color:#2563eb;">
+      <button type="button" onclick="if(_cropperInstance)_cropperInstance.zoom(0.15)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:18px;line-height:1;">+</button>
+      <button type="button" onclick="resetCropZoom()" style="padding:4px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text-muted);cursor:pointer;font-size:11px;">Reset</button>
     </div>
+
+    <!-- Ratio buttons -->
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button type="button" onclick="setCropRatio(1)"     style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">1:1 Square</button>
+      <button type="button" onclick="setCropRatio(4/3)"   style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">4:3</button>
+      <button type="button" onclick="setCropRatio(16/9)"  style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">16:9</button>
+      <button type="button" onclick="setCropRatio(3/4)"   style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">3:4 Tall</button>
+      <button type="button" onclick="setCropRatio(NaN)"   style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">Free</button>
+    </div>
+
+    <!-- Action buttons -->
     <div style="display:flex;gap:10px;">
       <button type="button" onclick="closeCropModal()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:14px;">Cancel</button>
       <button type="button" onclick="applyCrop()" style="flex:2;padding:10px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">✓ Apply Crop</button>

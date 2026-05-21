@@ -242,7 +242,10 @@ app.get('/dashboard-rep.html', serveDashboard(['rep']));
 
 app.use(express.static(path.join(__dirname, 'public'), {
   index: 'index.html',
-  setHeaders: (res, filePath) => { if (filePath.includes('dashboard-')) res.status(403).end('Forbidden'); }
+  setHeaders: (res, filePath) => {
+    if (filePath.includes('dashboard-')) res.status(403).end('Forbidden');
+    if (filePath.endsWith('favicon.svg')) res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
 }));
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -1149,7 +1152,8 @@ app.patch('/api/products/:id/price', authenticate, authorize('admin'), async (re
     if (user_id) {
       await q('INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,$2,NULL,$3) ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price', [req.params.id, user_id, parseFloat(price)]);
     } else if (role) {
-      await q('INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3) ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price', [req.params.id, role, parseFloat(price)]);
+      await q('DELETE FROM product_prices WHERE product_id=$1 AND user_id IS NULL AND role=$2', [req.params.id, role]);
+      await q('INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3)', [req.params.id, role, parseFloat(price)]);
     }
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }

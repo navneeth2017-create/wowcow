@@ -71,42 +71,8 @@ async function seed() {
     }
 
     // ── Products ──────────────────────────────────────────────────────────────
-    const products = [
-      { name:'ADDY Focus Capsules 15ct',      description:'Clinically studied whole green coffee powder (WGCP) capsules. Sustained focus with no crash. High-impulse checkout sell.',          sku:'ADDY-CAP-15',  stock:500, image_url:'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop', prices:{ store_owner:8.50,  distributor:7.00,  rep:7.50,  master_distributor:6.00  } },
-      { name:'ADDY Focus Capsules 60ct',      description:'Full-size bottle for repeat customers. Same WGCP formula, better per-unit margin. Strong re-order velocity.',                       sku:'ADDY-CAP-60',  stock:400, image_url:'https://images.unsplash.com/photo-1550572017-ea93494b8b54?w=600&auto=format&fit=crop&q=80', prices:{ store_owner:28.00, distributor:23.00, rep:25.00, master_distributor:20.00 } },
-      { name:'ADDY Energy Shot Blue Razz',    description:'Single-serve Blue Raspberry energy shot. All-natural, no crash. Ideal near registers and cooler doors.',                             sku:'ADDY-SHOT-BR', stock:600, image_url:'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
-      { name:'ADDY Energy Shot Strawberry',   description:'Single-serve Strawberry energy shot. Same clean ADDY formula — the brand your customers already know.',                             sku:'ADDY-SHOT-SW', stock:600, image_url:'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&auto=format&fit=crop', prices:{ store_owner:3.50,  distributor:2.80,  rep:3.00,  master_distributor:2.40  } },
-      { name:'ADDY Energy Gummies',           description:'Chewable energy and focus gummies. No-pill format with strong crossover appeal. Expanding customer reach.',                          sku:'ADDY-GUM-01',  stock:350, image_url:'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=600&auto=format&fit=crop', prices:{ store_owner:9.00,  distributor:7.50,  rep:8.00,  master_distributor:6.50  } },
-    ];
-
-    const productIds = [];
-    for (const p of products) {
-      const pr = await client.query(
-        'INSERT INTO products (name,description,image_url,sku,stock,active) VALUES ($1,$2,$3,$4,$5,1) RETURNING id',
-        [p.name, p.description, p.image_url, p.sku, p.stock]
-      );
-      const pid = pr.rows[0].id;
-      productIds.push(pid);
-      for (const [role, price] of Object.entries(p.prices)) {
-        await client.query(
-          'INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3) ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price',
-          [pid, role, price]
-        );
-      }
-    }
-    console.log('  ✓ 6 products with tier pricing');
-
-    // ── Store Inventory ───────────────────────────────────────────────────────
-    const firstStores = storeIds.slice(0, 30);
-    for (const sid of firstStores) {
-      for (const pid of productIds) {
-        await client.query(
-          'INSERT INTO store_inventory (store_id,product_id,quantity,low_stock_threshold) VALUES ($1,$2,$3,10) ON CONFLICT DO NOTHING',
-          [sid, pid, Math.floor(Math.random() * 120)]
-        );
-      }
-    }
-    console.log('  ✓ Store inventory seeded');
+    // No dummy products — add real products via the admin dashboard after deploy
+    console.log('  ✓ No dummy products seeded (add via Admin → Products)');
 
     console.log('\n✅ Seed complete!');
     console.log('  Admin:       admin@wowcow.com / admin123');

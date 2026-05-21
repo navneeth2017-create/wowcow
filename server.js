@@ -141,22 +141,19 @@ async function migrate() {
     console.log('  ✓ Invoice backfill complete');
   }
 
-  // Seed admin if no users exist yet
-  const existing = await one('SELECT id FROM users LIMIT 1');
-  if (!existing) {
-    console.log('🌱 No users found — running seed...');
-    require('./db/seed');
-  }
-
   // Create production admin account if it doesn't exist
-  const prodAdmin = await one("SELECT id FROM users WHERE email='admin@wowcowdistributors.com'");
-  if (!prodAdmin) {
-    const hash = bcrypt.hashSync('DanteNavLoveWowcow26!', 10);
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@wowcowdistributors.com';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const prodAdmin = await one('SELECT id FROM users WHERE email=$1', [adminEmail]);
+  if (!prodAdmin && adminPassword) {
+    const hash = bcrypt.hashSync(adminPassword, 10);
     await q(
       "INSERT INTO users (email, name, phone, role, password_hash, status) VALUES ($1,$2,$3,$4,$5,'active')",
-      ['admin@wowcowdistributors.com', 'Admin', '', 'admin', hash]
+      [adminEmail, 'Admin', '', 'admin', hash]
     );
-    console.log('✅ Production admin account created: admin@wowcowdistributors.com');
+    console.log('✅ Production admin account created: ' + adminEmail);
+  } else if (!prodAdmin && !adminPassword) {
+    console.warn('⚠️  No admin account exists and ADMIN_PASSWORD env var not set. Set it in Railway to auto-create admin.');
   }
 }
 

@@ -1085,7 +1085,7 @@ app.post('/api/products', authenticate, authorize('admin'), async (req, res) => 
     }
     await logActivity('created_product', name, req.user.email);
     res.status(201).json(p);
-  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+  } catch(e) { console.error('Product POST error:', e.message); res.status(500).json({ error: e.message }); }
 });
 
 app.patch('/api/products/:id', authenticate, authorize('admin'), async (req, res) => {

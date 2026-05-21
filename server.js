@@ -11,8 +11,8 @@ app.use(express.json({ limit: '10mb' }));
 
 // ── WWW REDIRECT ──────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
-  if (req.headers.host && req.headers.host.startsWith('www.')) {
-    return res.redirect(301, `https://${req.headers.host.slice(4)}${req.url}`);
+  if (req.headers.host && !req.headers.host.startsWith('www.') && !req.headers.host.includes('localhost') && !req.headers.host.includes('railway')) {
+    return res.redirect(301, `https://www.${req.headers.host}${req.url}`);
   }
   next();
 });

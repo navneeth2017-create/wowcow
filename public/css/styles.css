@@ -177,8 +177,20 @@ body {
 
 .btn-outline:hover { background: var(--bg-hover); }
 
-.btn-danger { background: var(--red); }
-.btn-danger:hover { background: #b91c1c; }
+.btn-danger {
+  background: var(--red);
+  animation: pulse-danger 2.8s ease-in-out infinite;
+}
+.btn-danger:hover {
+  background: #b91c1c;
+  animation: none;
+}
+
+@keyframes pulse-danger {
+  0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+  50%  { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
 
 .btn-green { background: var(--green); }
 .btn-green:hover { background: #047857; }

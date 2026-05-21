@@ -105,6 +105,14 @@ async function migrate() {
   await q(schema);
   console.log('✅ Schema ready');
 
+  // ── Fix orders.user_id FK to allow NULL (enables user deletion) ──────────────
+  try {
+    await q('ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL');
+    await q('ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_user_id_fkey');
+    await q('ALTER TABLE orders ADD CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL');
+    console.log('✅ orders.user_id FK migration applied');
+  } catch(e) { console.log('ℹ️  orders.user_id FK already up to date'); }
+
   // ── Fix order_items.product_id FK to allow NULL (enables product deletion) ──
   try {
     await q('ALTER TABLE order_items ALTER COLUMN product_id DROP NOT NULL');
@@ -739,21 +747,24 @@ app.delete('/api/users/:id', authenticate, authorize('admin'), async (req, res) 
     const user = await one('SELECT * FROM users WHERE id=$1', [req.params.id]);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' });
-    // Clean up related data
-    await q('DELETE FROM push_subscriptions WHERE user_id=$1', [user.id]);
-    await q('DELETE FROM preorders         WHERE user_id=$1', [user.id]);
-    await q('DELETE FROM owner_stores      WHERE owner_id=$1', [user.id]);
-    await q('DELETE FROM distributor_stores WHERE distributor_id=$1', [user.id]);
-    await q('UPDATE stores SET store_id=NULL WHERE id IN (SELECT store_id FROM owner_stores WHERE owner_id=$1)', [user.id]);
-    await q('UPDATE users SET store_id=NULL WHERE id=$1', [user.id]);
-    await q('DELETE FROM reps WHERE user_id=$1', [user.id]);
-    await q('DELETE FROM password_resets WHERE user_id=$1', [user.id]);
-    await q('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id=$1)', [user.id]);
-    await q('DELETE FROM carts WHERE user_id=$1', [user.id]);
-    await q('DELETE FROM users WHERE id=$1', [user.id]);
+    const uid = user.id;
+    // Clean up in FK-safe order — cover every table that references users(id)
+    await q('DELETE FROM push_subscriptions  WHERE user_id=$1', [uid]);
+    await q('DELETE FROM preorders           WHERE user_id=$1', [uid]);
+    await q('DELETE FROM password_resets     WHERE user_id=$1', [uid]);
+    await q('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id=$1)', [uid]);
+    await q('DELETE FROM carts               WHERE user_id=$1', [uid]);
+    await q('DELETE FROM rep_store_assignments WHERE rep_id IN (SELECT id FROM reps WHERE user_id=$1)', [uid]);
+    await q('DELETE FROM reps                WHERE user_id=$1', [uid]);
+    await q('DELETE FROM distributor_stores  WHERE distributor_id=$1', [uid]);
+    await q('DELETE FROM owner_stores        WHERE owner_id=$1', [uid]);
+    // Nullify orders so order history is preserved but user reference removed
+    await q('UPDATE orders SET user_id=NULL  WHERE user_id=$1', [uid]);
+    await q('UPDATE users  SET store_id=NULL WHERE id=$1', [uid]);
+    await q('DELETE FROM users               WHERE id=$1', [uid]);
     await logActivity('deleted_user', user.name || user.email, req.user.email);
     res.json({ success: true });
-  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+  } catch(e) { console.error(e.message); res.status(500).json({ error: e.message }); }
 });
 
 // Admin reset a user's password

@@ -110,7 +110,7 @@ function renderProductsTable() {
         ? `<span class="status-badge active">Active</span>`
         : `<span class="status-badge inactive">Inactive</span>`;
     const imgEl = p.image_url
-      ? `<img src="${p.image_url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;" onerror="this.outerHTML='<div style=\\'width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;\\'>💊</div>'">`
+      ? `<div style="width:44px;height:44px;border-radius:6px;overflow:hidden;flex-shrink:0;"><img src="${p.image_url}" style="width:44px;height:44px;object-fit:cover;display:block;" onerror="this.parentElement.outerHTML='<div style=\\'width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;\\'>💊</div>'"></div>`
       : `<div style="width:44px;height:44px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;">💊</div>`;
     const preorderInfo = p.active === 2
       ? `<span id="preorder-count-${p.id}" style="font-size:11px;color:#7c3aed;font-weight:600;display:block;margin-top:4px;">👥 ${parseInt(p.preorder_count) || 0} interested</span>`
@@ -197,22 +197,29 @@ function openCropModal() {
   const modal = document.getElementById('crop-modal');
   const cropImg = document.getElementById('crop-source');
   modal.style.display = 'flex';
-  cropImg.src = src;
-  // Destroy any existing cropper
+
+  // Destroy any existing cropper first
   if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+
+  // Remove old src to force onload to fire even for same/cached data URLs
+  cropImg.src = '';
   cropImg.onload = () => {
     _cropperInstance = new Cropper(cropImg, {
       aspectRatio: 1,
       viewMode: 2,
       autoCropArea: 0.9,
       responsive: true,
+      background: true,
     });
   };
+  // Set src AFTER onload is assigned
+  cropImg.src = src;
 }
 
 function closeCropModal() {
   document.getElementById('crop-modal').style.display = 'none';
   if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+  _cropSourceDataUrl = null;
   // Reset file input so same file can be re-selected
   const fi = document.getElementById('pf-image-file');
   if (fi) fi.value = '';
@@ -223,13 +230,25 @@ function setCropRatio(ratio) {
 }
 
 function applyCrop() {
-  if (!_cropperInstance) return;
-  const canvas = _cropperInstance.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200, imageSmoothingQuality: 'high' });
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  document.getElementById('pf-image-url').value = dataUrl;
-  updateImagePreview(dataUrl);
-  closeCropModal();
-  showToast('Image cropped ✓', 'success');
+  if (!_cropperInstance) { showToast('Cropper not ready, please try again', 'error'); return; }
+  try {
+    const canvas = _cropperInstance.getCroppedCanvas({
+      maxWidth: 800,
+      maxHeight: 800,
+      fillColor: '#ffffff',       // White bg for transparent PNGs
+      imageSmoothingEnabled: true,
+    });
+    if (!canvas) { showToast('Could not crop image', 'error'); return; }
+    // Use PNG if source looks like PNG, else JPEG
+    const isPng = (_cropSourceDataUrl || '').startsWith('data:image/png');
+    const dataUrl = canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.92);
+    document.getElementById('pf-image-url').value = dataUrl;
+    updateImagePreview(dataUrl);
+    closeCropModal();
+    showToast('Image cropped ✓', 'success');
+  } catch(err) {
+    showToast('Crop failed: ' + err.message, 'error');
+  }
 }
 
 async function handleProductSubmit(e) {

@@ -7,6 +7,8 @@
   <link rel="icon" href="/images/favicon-cow.ico" type="image/x-icon">
   <link rel="stylesheet" href="/css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
   <script>const saved=localStorage.getItem('wc_theme')||'light';document.documentElement.setAttribute('data-theme',saved);</script>
   <style>
     @keyframes pulse-red {
@@ -320,10 +322,36 @@
         <div class="form-group">
           <label>Product Image</label>
           <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
-            <input type="file" accept="image/*" onchange="handleImageUpload(this)" style="font-size:13px;flex:1;">
+            <input type="file" id="pf-image-file" accept="image/*" onchange="handleImageUpload(this)" style="font-size:13px;flex:1;">
           </div>
           <input type="text" id="pf-image-url" placeholder="Or paste an image URL" oninput="updateImagePreview(this.value)" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:14px;box-sizing:border-box;">
-          <img id="product-preview-img" style="display:none;width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin-top:10px;" alt="Preview">
+          <div id="product-preview-wrap" style="display:none;margin-top:10px;position:relative;">
+            <img id="product-preview-img" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;" alt="Preview">
+            <button type="button" onclick="openCropModal()" style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit;">✂️ Crop</button>
+          </div>
+
+<!-- ── CROP MODAL ─────────────────────────────────────────────────────── -->
+<div id="crop-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--bg-card);border-radius:16px;padding:24px;width:min(92vw,560px);display:flex;flex-direction:column;gap:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;font-size:16px;color:var(--text);">✂️ Crop Image</h3>
+      <button type="button" onclick="closeCropModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">×</button>
+    </div>
+    <div style="max-height:380px;overflow:hidden;border-radius:8px;background:#000;">
+      <img id="crop-source" style="display:block;max-width:100%;">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button type="button" onclick="setCropRatio(1)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">1:1 Square</button>
+      <button type="button" onclick="setCropRatio(4/3)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">4:3</button>
+      <button type="button" onclick="setCropRatio(16/9)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">16:9</button>
+      <button type="button" onclick="setCropRatio(NaN)" style="padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:13px;">Free</button>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button type="button" onclick="closeCropModal()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text);cursor:pointer;font-size:14px;">Cancel</button>
+      <button type="button" onclick="applyCrop()" style="flex:2;padding:10px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">✓ Apply Crop</button>
+    </div>
+  </div>
+</div>
         </div>
 
         <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">

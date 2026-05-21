@@ -1195,7 +1195,7 @@ app.get('/api/invoices/:orderId/print', authenticate, async (req, res) => {
     if (!order) return res.status(404).send('Invoice not found');
     const invoice = await one('SELECT * FROM invoices WHERE order_id=$1', [req.params.orderId]);
     if (!invoice) return res.status(404).send('Invoice not found');
-    const items = await all('SELECT oi.*,p.name,p.sku FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1', [req.params.orderId]);
+    const items = await all('SELECT oi.*,COALESCE(p.name,\'[Deleted Product]\') as name,COALESCE(p.sku,\'—\') as sku FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1', [req.params.orderId]);
     const statusColor = invoice.payment_status === 'paid' ? '#16a34a' : invoice.payment_status === 'overdue' ? '#dc2626' : '#d97706';
     const statusBg = invoice.payment_status === 'paid' ? '#f0fdf4' : invoice.payment_status === 'overdue' ? '#fef2f2' : '#fffbeb';
     const statusLabel = invoice.payment_status.charAt(0).toUpperCase() + invoice.payment_status.slice(1);
@@ -1522,7 +1522,7 @@ app.get('/api/orders', authenticate, async (req, res) => {
       ? await all('SELECT o.*,u.name as user_name,u.email as user_email,s.name as store_name FROM orders o JOIN users u ON u.id=o.user_id LEFT JOIN stores s ON s.id=o.store_id ORDER BY o.created_at DESC')
       : await all('SELECT o.*,s.name as store_name FROM orders o LEFT JOIN stores s ON s.id=o.store_id WHERE o.user_id=$1 ORDER BY o.created_at DESC', [userId]);
     const result = await Promise.all(orders.map(async o => {
-      const items = await all('SELECT oi.*,p.name FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1', [o.id]);
+      const items = await all('SELECT oi.*,COALESCE(p.name,\'[Deleted Product]\') as name FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=$1', [o.id]);
       const invoice = await one('SELECT invoice_number, payment_status as invoice_status, due_date, paid_at FROM invoices WHERE order_id=$1', [o.id]);
       return { ...o, items, invoice };
     }));

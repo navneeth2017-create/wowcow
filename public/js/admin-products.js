@@ -163,14 +163,19 @@ function showEditProduct(id) {
   document.getElementById('product-modal').classList.add('active');
 }
 
+let _cropperInstance = null;
+let _cropSourceDataUrl = null;
+
 function updateImagePreview(url) {
   const img = document.getElementById('product-preview-img');
+  const wrap = document.getElementById('product-preview-wrap');
   if (url && url.trim()) {
     img.src = url;
     img.style.display = 'block';
-    img.onerror = () => { img.style.display = 'none'; };
+    wrap.style.display = 'block';
+    img.onerror = () => { wrap.style.display = 'none'; };
   } else {
-    img.style.display = 'none';
+    wrap.style.display = 'none';
   }
 }
 
@@ -179,10 +184,52 @@ function handleImageUpload(input) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
-    document.getElementById('pf-image-url').value = e.target.result;
-    updateImagePreview(e.target.result);
+    _cropSourceDataUrl = e.target.result;
+    // Auto-open crop modal on upload
+    openCropModal();
   };
   reader.readAsDataURL(file);
+}
+
+function openCropModal() {
+  const src = _cropSourceDataUrl || document.getElementById('pf-image-url').value;
+  if (!src) return;
+  const modal = document.getElementById('crop-modal');
+  const cropImg = document.getElementById('crop-source');
+  modal.style.display = 'flex';
+  cropImg.src = src;
+  // Destroy any existing cropper
+  if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+  cropImg.onload = () => {
+    _cropperInstance = new Cropper(cropImg, {
+      aspectRatio: 1,
+      viewMode: 2,
+      autoCropArea: 0.9,
+      responsive: true,
+    });
+  };
+}
+
+function closeCropModal() {
+  document.getElementById('crop-modal').style.display = 'none';
+  if (_cropperInstance) { _cropperInstance.destroy(); _cropperInstance = null; }
+  // Reset file input so same file can be re-selected
+  const fi = document.getElementById('pf-image-file');
+  if (fi) fi.value = '';
+}
+
+function setCropRatio(ratio) {
+  if (_cropperInstance) _cropperInstance.setAspectRatio(ratio);
+}
+
+function applyCrop() {
+  if (!_cropperInstance) return;
+  const canvas = _cropperInstance.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200, imageSmoothingQuality: 'high' });
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  document.getElementById('pf-image-url').value = dataUrl;
+  updateImagePreview(dataUrl);
+  closeCropModal();
+  showToast('Image cropped ✓', 'success');
 }
 
 async function handleProductSubmit(e) {

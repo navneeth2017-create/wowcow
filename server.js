@@ -478,6 +478,22 @@ app.get('/api/stores', authenticate, async (req, res) => {
     const top10 = await all('SELECT id,name,monthly_revenue FROM stores ORDER BY monthly_revenue DESC LIMIT 10');
     const bottom10 = await all('SELECT id,name,monthly_revenue FROM stores ORDER BY monthly_revenue ASC LIMIT 10');
     const byStatus = await all('SELECT status, COUNT(*) as count FROM stores GROUP BY status');
+    // Revenue by product (from actual orders)
+    const byProduct = await all(`
+      SELECT COALESCE(p.name, '[Deleted Product]') as name,
+             SUM(oi.total_price) as revenue,
+             SUM(oi.quantity) as units
+      FROM order_items oi
+      LEFT JOIN products p ON p.id = oi.product_id
+      GROUP BY p.name ORDER BY revenue DESC LIMIT 10
+    `);
+    // Orders over time (last 30 days)
+    const ordersOverTime = await all(`
+      SELECT DATE(created_at) as date, COUNT(*) as orders, SUM(total) as revenue
+      FROM orders
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(created_at) ORDER BY date ASC
+    `);
 
     const buckets = [0,50000,100000,150000,200000,250000,300000,400000,500000];
     const distribution = await Promise.all(buckets.map(async (min,i) => {
@@ -491,7 +507,8 @@ app.get('/api/stores', authenticate, async (req, res) => {
       stores, total: stats.total, total_filtered: totalFiltered,
       total_revenue: stats.total_revenue, avg_revenue: stats.avg_revenue,
       page: pageNum, page_size: pageSize, total_pages: Math.ceil(totalFiltered/pageSize),
-      by_category: byCategory, top10, bottom10, by_status: byStatus, distribution
+      by_category: byCategory, top10, bottom10, by_status: byStatus, distribution,
+      by_product: byProduct, orders_over_time: ordersOverTime
     });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });

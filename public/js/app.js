@@ -150,6 +150,17 @@ async function apiFetch(url, options = {}) {
   return data;
 }
 
+function openInvoice(orderId) {
+  const token = getToken();
+  const a = document.createElement('a');
+  a.href = '/api/invoices/' + orderId + '/print?token=' + token;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 function formatCurrency(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
@@ -654,8 +665,8 @@ async function refreshInvestorTable() {
   animateCurrency(document.getElementById('stat-revenue'), data.total_revenue);
   animateCurrency(document.getElementById('stat-avg'), data.avg_revenue);
 
-  renderCategoryChart('chart-category', data.by_category);
-  renderBarChart('chart-top', data.by_category);
+  renderProductRevenueChart('chart-category', data.by_product);
+  renderOrdersOverTimeChart('chart-top', data.orders_over_time);
   renderDistributionChart('chart-distribution', data.distribution);
   renderPerformers('top-performers', data.top10, false);
   renderPerformers('bottom-performers', data.bottom10, true);
@@ -892,41 +903,59 @@ async function handleEditStore(e) {
 // SHARED: Charts
 // ==========================================
 
-function renderCategoryChart(canvasId, byCategory) {
+function renderProductRevenueChart(canvasId, byProduct) {
   const ctx = document.getElementById(canvasId);
-  if (!ctx || !byCategory) return;
+  if (!ctx) return;
   if (ctx._chart) ctx._chart.destroy();
-  const colors = ['#2563eb','#059669','#d97706','#dc2626','#7c3aed','#0891b2','#be185d','#65a30d','#ea580c','#4f46e5','#0d9488','#ca8a04','#e11d48','#6d28d9','#0284c7'];
+  if (!byProduct || byProduct.length === 0) {
+    ctx._chart = null;
+    const parent = ctx.parentElement;
+    parent.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:13px;">No order data yet</div>';
+    return;
+  }
+  const colors = ['#2563eb','#059669','#d97706','#dc2626','#7c3aed','#0891b2','#be185d','#65a30d','#ea580c','#4f46e5'];
   ctx._chart = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: byCategory.map(c => c.category),
-      datasets: [{ data: byCategory.map(c => c.revenue), backgroundColor: colors.slice(0, byCategory.length), borderWidth: 2, borderColor: getComputedStyle(document.body).getPropertyValue('--bg-card') }]
+      labels: byProduct.map(p => p.name),
+      datasets: [{ data: byProduct.map(p => parseFloat(p.revenue)||0), backgroundColor: colors.slice(0, byProduct.length), borderWidth: 2, borderColor: getComputedStyle(document.body).getPropertyValue('--bg-card') }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: ctx => `${ctx.label}: $${(ctx.raw/1000).toFixed(0)}k` } }
+        tooltip: { callbacks: { label: c => `${c.label}: $${parseFloat(c.raw).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` } }
       }
     }
   });
 }
 
-function renderBarChart(canvasId, byCategory) {
+function renderOrdersOverTimeChart(canvasId, ordersOverTime) {
   const ctx = document.getElementById(canvasId);
-  if (!ctx || !byCategory) return;
+  if (!ctx) return;
   if (ctx._chart) ctx._chart.destroy();
+  if (!ordersOverTime || ordersOverTime.length === 0) {
+    const parent = ctx.parentElement;
+    parent.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:13px;">No orders in last 30 days</div>';
+    return;
+  }
   ctx._chart = new Chart(ctx, {
-    type: 'bar',
+    type: 'line',
     data: {
-      labels: byCategory.slice(0, 10).map(c => c.category),
-      datasets: [{ label: 'Stores', data: byCategory.slice(0, 10).map(c => c.count), backgroundColor: '#2563eb', borderRadius: 6 }]
+      labels: ordersOverTime.map(d => new Date(d.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})),
+      datasets: [
+        { label: 'Revenue', data: ordersOverTime.map(d => parseFloat(d.revenue)||0), borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.08)', fill: true, tension: 0.4, pointRadius: 3, yAxisID: 'y' },
+        { label: 'Orders', data: ordersOverTime.map(d => parseInt(d.orders)||0), borderColor: '#059669', backgroundColor: 'transparent', tension: 0.4, pointRadius: 3, borderDash: [4,3], yAxisID: 'y1' }
+      ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { stepSize: 1 } }, x: { grid: { display: false }, ticks: { font: { size: 11 } } } }
+      plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        y: { position: 'left', grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => '$'+v.toLocaleString() } },
+        y1: { position: 'right', grid: { display: false }, ticks: { stepSize: 1 } },
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
     }
   });
 }
@@ -1395,8 +1424,8 @@ async function refreshAdminTable() {
   const activeEl = document.getElementById('stat-active');
   if (activeEl) activeEl.textContent = `${statusCounts.active || 0} active / ${statusCounts.pending || 0} pending / ${statusCounts.inactive || 0} inactive`;
 
-  renderCategoryChart('chart-category', data.by_category);
-  renderBarChart('chart-top', data.by_category);
+  renderProductRevenueChart('chart-category', data.by_product);
+  renderOrdersOverTimeChart('chart-top', data.orders_over_time);
 
   selectedStores.clear();
   updateBulkBar();
@@ -1701,7 +1730,7 @@ async function loadAdminOrders() {
           <select onchange="updateOrderStatus(${o.id}, this.value)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);">
             ${['pending','processing','shipped','delivered','cancelled'].map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
           </select>
-          ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 8px;" onclick="window.open('/api/invoices/'+o.id+'/print?token='+getToken(),'_blank')">📄 Invoice</button>` : ''}
+          ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;padding:4px 8px;" onclick="openInvoice(${o.id})">📄 Invoice</button>` : ''}
           ${inv && displayStatus !== 'paid' ? `<button class="btn btn-sm btn-green" style="font-size:11px;padding:4px 8px;" onclick="markInvoicePaid(${o.id}, this)">Mark Paid</button>` : ''}
         </div>
       </td>
@@ -1801,7 +1830,7 @@ function renderOrderDetailModal(o, isAdmin) {
         <div><span style="color:var(--text-muted);">Due Date</span><br><strong style="color:var(--text);">${new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</strong></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-sm btn-outline" onclick="window.open('/api/invoices/'+o.id+'/print?token='+getToken(),'_blank')" style="font-size:12px;">📄 View / Download Invoice</button>
+        <button class="btn btn-sm btn-outline" onclick="openInvoice(${o.id})" style="font-size:12px;">📄 View / Download Invoice</button>
         ${isAdmin && status !== 'paid' ? `<button class="btn btn-sm btn-green" onclick="markInvoicePaid(${o.id}, this);closeModal();" style="font-size:12px;">✓ Mark as Paid</button>` : ''}
       </div>
     </div>`;
@@ -1871,7 +1900,7 @@ async function loadMyOrders(tbodyId) {
       </td>
       <td><span class="status-badge ${statusColors[o.status]||'pending'}">${o.status}</span></td>
       <td onclick="event.stopPropagation()">
-        ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;" onclick="window.open('/api/invoices/'+o.id+'/print?token='+getToken(),'_blank')">📄 Invoice</button>` : '—'}
+        ${inv ? `<button class="btn btn-sm btn-outline" style="font-size:11px;" onclick="openInvoice(${o.id})">📄 Invoice</button>` : '—'}
       </td>
     </tr>`;
   }).join('');

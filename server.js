@@ -105,6 +105,14 @@ async function migrate() {
   await q(schema);
   console.log('✅ Schema ready');
 
+  // ── Fix order_items.product_id FK to allow NULL (enables product deletion) ──
+  try {
+    await q('ALTER TABLE order_items ALTER COLUMN product_id DROP NOT NULL');
+    await q('ALTER TABLE order_items DROP CONSTRAINT IF EXISTS order_items_product_id_fkey');
+    await q(`ALTER TABLE order_items ADD CONSTRAINT order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL`);
+    console.log('✅ order_items FK migration applied');
+  } catch(e) { console.log('ℹ️  order_items FK already up to date'); }
+
   // Seed default notification email
   await q("INSERT INTO notification_emails (email, label) VALUES ('d.n.holding7@gmail.com', 'Admin') ON CONFLICT DO NOTHING");
 

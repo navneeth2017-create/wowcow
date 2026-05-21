@@ -226,5 +226,9 @@ async function deleteProduct(id) {
   if (result && result.success) {
     showToast('Product deleted', 'success');
     loadProductsTab();
+  } else if (result && result.error) {
+    showToast(result.error, 'error');
+  } else if (!result) {
+    showToast('Failed to delete product. Please try again.', 'error');
   }
 }

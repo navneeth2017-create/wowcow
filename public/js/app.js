@@ -145,7 +145,9 @@ async function apiFetch(url, options = {}) {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers }
   });
   if (res.status === 401) { logout(); return null; }
-  return res.json();
+  const data = await res.json();
+  if (!res.ok && data.error) { showToast(data.error, 'error'); }
+  return data;
 }
 
 function formatCurrency(n) {

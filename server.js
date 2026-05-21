@@ -1087,6 +1087,8 @@ app.delete('/api/products/:id', authenticate, authorize('admin'), async (req, re
   try {
     const p = await one('SELECT * FROM products WHERE id=$1', [req.params.id]);
     if (!p) return res.status(404).json({ error: 'Product not found' });
+    // Nullify product reference in order_items (preserve order history)
+    await q('UPDATE order_items SET product_id=NULL WHERE product_id=$1', [req.params.id]);
     await q('DELETE FROM products WHERE id=$1', [req.params.id]);
     await logActivity('deleted_product', p.name, req.user.email);
     res.json({ success: true });

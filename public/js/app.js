@@ -589,11 +589,33 @@ function updateBulkBar() {
 async function bulkDelete() {
   if (!confirm(`Delete ${selectedStores.size} stores? This cannot be undone.`)) return;
   const ids = Array.from(selectedStores);
-  await apiFetch('/api/stores/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) });
-  showToast(`${ids.length} stores deleted`, 'success');
+  // Send in batches of 50 to avoid query size limits
+  const batchSize = 50;
+  let deleted = 0, failed = 0;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const batch = ids.slice(i, i + batchSize);
+    const result = await apiFetch('/api/stores/bulk-delete', { method: 'POST', body: JSON.stringify({ ids: batch }) });
+    if (result && result.success) deleted += result.deleted;
+    else failed += batch.length;
+  }
+  if (deleted > 0) showToast(`${deleted} store${deleted > 1 ? 's' : ''} deleted`, 'success');
+  if (failed > 0) showToast(`${failed} store${failed > 1 ? 's' : ''} could not be deleted`, 'error');
   selectedStores.clear();
   refreshAdminTable();
   loadActivityFeed();
+}
+
+async function deleteAllStores() {
+  const total = document.getElementById('stat-total')?.textContent || 'all';
+  if (!confirm(`⚠️ Delete ALL ${total} stores? This will permanently remove every store in the system. This cannot be undone.`)) return;
+  showToast('Deleting all stores...', 'info');
+  const result = await apiFetch('/api/stores/delete-all', { method: 'POST' });
+  if (result && result.success) {
+    showToast(`All ${result.deleted} stores deleted ✓`, 'success');
+    selectedStores.clear();
+    refreshAdminTable();
+    loadActivityFeed();
+  }
 }
 
 function bulkExport() {
@@ -1619,8 +1641,10 @@ async function loadUsersTab() {
     custom: 'Custom'
   };
   const tierableRoles = ['store_owner', 'distributor', 'rep'];
+  // Store users for detail modal
+  window._adminUsers = users;
   tbody.innerHTML = users.map(u => `
-    <tr>
+    <tr style="cursor:pointer;" onclick="showUserDetail(${u.id})">
       <td>${esc(u.name || '—')}</td>
       <td>${esc(u.email)}</td>
       <td><span class="role-badge ${u.role}" style="font-size:11px;">${roleLabels[u.role] || u.role}</span></td>
@@ -1632,7 +1656,7 @@ async function loadUsersTab() {
           : `<span style="font-size:12px;color:var(--text-muted);">—</span>`
         }
       </td>
-      <td>
+      <td onclick="event.stopPropagation()">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           ${u.status === 'active'
             ? `<button class="btn btn-sm btn-danger" onclick="toggleUserStatus(${u.id}, 'inactive', this)">Deactivate</button>`
@@ -1642,6 +1666,7 @@ async function loadUsersTab() {
             ? `<button class="btn btn-sm btn-outline" onclick="showChangeTierModal(${u.id}, '${esc(u.name || u.email)}')">Change Tier</button>`
             : ''
           }
+          <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${esc(u.name || u.email)}')">Delete</button>
         </div>
       </td>
     </tr>
@@ -1683,6 +1708,81 @@ async function toggleUserStatus(id, status, btn) {
   const result = await apiFetch(`/api/users/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
   if (result && result.success) {
     showToast(`User ${status === 'active' ? 'activated' : 'deactivated'}`, 'success');
+    loadUsersTab();
+  }
+}
+
+function showUserDetail(userId) {
+  const u = (window._adminUsers || []).find(x => x.id === userId);
+  if (!u) return;
+  const roleLabels = { admin: 'Admin', investor: 'Investor', store_owner: 'Wholesaler', distributor: 'Distributor', rep: 'Rep' };
+  const modal = document.getElementById('user-detail-modal');
+  const content = document.getElementById('user-detail-content');
+  content.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:20px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Name</div><div style="font-size:15px;font-weight:600;color:var(--text);">${esc(u.name || '—')}</div></div>
+        <div><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Role</div><span class="role-badge ${u.role}">${roleLabels[u.role] || u.role}</span></div>
+        <div><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Email</div><div style="font-size:14px;color:var(--text);">${esc(u.email)}</div></div>
+        <div><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Phone</div><div style="font-size:14px;color:var(--text);">${esc(u.phone || '—')}</div></div>
+        <div><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Status</div><span class="status-badge ${u.status}">${u.status}</span></div>
+        <div><div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Pricing Tier</div><div style="font-size:14px;color:var(--text);">${esc(u.pricing_tier || 'Default')}</div></div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">🔑 Reset Password</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="password" id="admin-new-password-${u.id}" placeholder="New password (min 6 chars)" minlength="6"
+            style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:13px;">
+          <button class="btn btn-sm btn-outline" type="button" onclick="togglePasswordVisibility('admin-new-password-${u.id}', this)">👁 Show</button>
+          <button class="btn btn-sm btn-green" type="button" onclick="adminResetPassword(${u.id})">Set Password</button>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;gap:10px;justify-content:space-between;align-items:center;">
+        <button class="btn btn-danger" type="button" onclick="deleteUser(${u.id}, '${esc(u.name || u.email)}', true)">🗑 Delete Account</button>
+        <button class="btn btn-outline" type="button" onclick="document.getElementById('user-detail-modal').classList.remove('active')">Close</button>
+      </div>
+    </div>
+  `;
+  modal.classList.add('active');
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈 Hide';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁 Show';
+  }
+}
+
+async function adminResetPassword(userId) {
+  const input = document.getElementById(`admin-new-password-${userId}`);
+  if (!input || !input.value || input.value.length < 6) {
+    showToast('Password must be at least 6 characters', 'error');
+    return;
+  }
+  const result = await apiFetch(`/api/users/${userId}/reset-password`, {
+    method: 'PATCH',
+    body: JSON.stringify({ new_password: input.value })
+  });
+  if (result && result.success) {
+    showToast('Password updated ✓', 'success');
+    input.value = '';
+    input.type = 'password';
+  }
+}
+
+async function deleteUser(userId, userName, fromModal = false) {
+  if (!confirm(`Delete account for "${userName}"? This cannot be undone.`)) return;
+  const result = await apiFetch(`/api/users/${userId}`, { method: 'DELETE' });
+  if (result && result.success) {
+    showToast(`${userName} deleted`, 'success');
+    if (fromModal) document.getElementById('user-detail-modal').classList.remove('active');
     loadUsersTab();
   }
 }

@@ -86,7 +86,10 @@
 
         <div class="table-card">
           <div class="table-toolbar">
-            <h2>Store Directory</h2>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <h2 style="margin:0;">Store Directory</h2>
+              <button class="btn btn-sm btn-danger" onclick="deleteAllStores()" style="font-size:12px;padding:5px 12px;">🗑 Delete All Stores</button>
+            </div>
             <div class="toolbar-controls">
               <select class="filter-select" id="filter-category" onchange="adminFilter('category', this.value)"><option value="">All Categories</option></select>
               <select class="filter-select" id="filter-state" onchange="adminFilter('state', this.value)"><option value="">All States</option></select>
@@ -511,6 +514,15 @@
         <div class="form-group"><label>Confirm New Password</label><input type="password" name="confirm_password" required minlength="6"></div>
         <button type="submit" class="btn">Update Password</button>
       </form>
+    </div>
+  </div>
+
+  <!-- User Detail Modal -->
+  <div class="modal-overlay" id="user-detail-modal" onclick="if(event.target===this)this.classList.remove('active')">
+    <div class="modal" style="max-width:520px;">
+      <button class="close-btn" onclick="document.getElementById('user-detail-modal').classList.remove('active')">&times;</button>
+      <h2>User Details</h2>
+      <div id="user-detail-content"></div>
     </div>
   </div>
 

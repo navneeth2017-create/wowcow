@@ -141,6 +141,24 @@ async function migrate() {
     console.log('  ✓ Invoice backfill complete');
   }
 
+  // ── One-time cleanup: remove all seeded demo stores ──────────────────────────
+  const storeCount = await one('SELECT COUNT(*) as c FROM stores');
+  const userCount  = await one('SELECT COUNT(*) as c FROM users');
+  // If stores exist but no real orders, they are demo stores — wipe them
+  const orderCount = await one('SELECT COUNT(*) as c FROM orders');
+  if (parseInt(storeCount?.c) > 0 && parseInt(orderCount?.c) === 0) {
+    console.log(`🧹 Removing ${storeCount.c} demo stores...`);
+    await q('DELETE FROM store_notes');
+    await q('DELETE FROM store_inventory');
+    await q('DELETE FROM rep_store_assignments');
+    await q('DELETE FROM distributor_stores');
+    await q('DELETE FROM owner_stores');
+    await q('DELETE FROM carts');
+    await q('UPDATE users SET store_id=NULL');
+    await q('DELETE FROM stores');
+    console.log('✅ Demo stores removed');
+  }
+
   // Create production admin account if it doesn't exist
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@wowcowdistributors.com';
   const adminPassword = process.env.ADMIN_PASSWORD;
@@ -562,8 +580,17 @@ app.delete('/api/stores/:id', authenticate, authorize('admin'), async (req, res)
   try {
     const store = await one('SELECT * FROM stores WHERE id=$1', [req.params.id]);
     if (!store) return res.status(404).json({ error: 'Store not found' });
-    await q('DELETE FROM store_notes WHERE store_id=$1', [req.params.id]);
-    await q('DELETE FROM stores WHERE id=$1', [req.params.id]);
+    const id = req.params.id;
+    await q('DELETE FROM store_notes          WHERE store_id=$1', [id]);
+    await q('DELETE FROM store_inventory      WHERE store_id=$1', [id]);
+    await q('DELETE FROM rep_store_assignments WHERE store_id=$1', [id]);
+    await q('DELETE FROM distributor_stores   WHERE store_id=$1', [id]);
+    await q('DELETE FROM owner_stores         WHERE store_id=$1', [id]);
+    await q('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE store_id=$1)', [id]);
+    await q('DELETE FROM carts                WHERE store_id=$1', [id]);
+    await q('UPDATE orders SET store_id=NULL  WHERE store_id=$1', [id]);
+    await q('UPDATE users  SET store_id=NULL  WHERE store_id=$1', [id]);
+    await q('DELETE FROM stores               WHERE id=$1', [id]);
     await logActivity('deleted', store.name, req.user.email);
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
@@ -575,11 +602,39 @@ app.post('/api/stores/bulk-delete', authenticate, authorize('admin'), async (req
     if (!ids || !Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'No store IDs provided' });
     const placeholders = ids.map((_,i) => `$${i+1}`).join(',');
     const stores = await all(`SELECT name FROM stores WHERE id IN (${placeholders})`, ids);
-    await q(`DELETE FROM store_notes WHERE store_id IN (${placeholders})`, ids);
-    await q(`DELETE FROM stores WHERE id IN (${placeholders})`, ids);
+    // Delete in FK-safe order
+    await q(`DELETE FROM store_notes         WHERE store_id IN (${placeholders})`, ids);
+    await q(`DELETE FROM store_inventory     WHERE store_id IN (${placeholders})`, ids);
+    await q(`DELETE FROM rep_store_assignments WHERE store_id IN (${placeholders})`, ids);
+    await q(`DELETE FROM distributor_stores  WHERE store_id IN (${placeholders})`, ids);
+    await q(`DELETE FROM owner_stores        WHERE store_id IN (${placeholders})`, ids);
+    await q(`DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE store_id IN (${placeholders}))`, ids);
+    await q(`DELETE FROM carts               WHERE store_id IN (${placeholders})`, ids);
+    await q(`UPDATE orders SET store_id=NULL WHERE store_id IN (${placeholders})`, ids);
+    await q(`UPDATE users  SET store_id=NULL WHERE store_id IN (${placeholders})`, ids);
+    await q(`DELETE FROM stores              WHERE id       IN (${placeholders})`, ids);
     for (const s of stores) await logActivity('deleted', s.name, req.user.email);
     res.json({ success: true, deleted: ids.length });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+// Delete ALL stores (admin only - for clearing demo data)
+app.post('/api/stores/delete-all', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const count = await one('SELECT COUNT(*) as c FROM stores');
+    await q('DELETE FROM store_notes');
+    await q('DELETE FROM store_inventory');
+    await q('DELETE FROM rep_store_assignments');
+    await q('DELETE FROM distributor_stores');
+    await q('DELETE FROM owner_stores');
+    await q('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE store_id IS NOT NULL)');
+    await q('DELETE FROM carts WHERE store_id IS NOT NULL');
+    await q('UPDATE orders SET store_id=NULL WHERE store_id IS NOT NULL');
+    await q('UPDATE users  SET store_id=NULL WHERE store_id IS NOT NULL');
+    await q('DELETE FROM stores');
+    await logActivity('deleted_all_stores', `${count.c} stores removed`, req.user.email);
+    res.json({ success: true, deleted: parseInt(count.c) });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: e.message }); }
 });
 
 // ── FILTERS / ACTIVITY / NOTES / CSV ─────────────────────────────────────────
@@ -674,6 +729,43 @@ app.post('/api/users/:id/stores', authenticate, authorize('admin'), async (req, 
     for (const sid of store_ids) {
       await q('INSERT INTO owner_stores (owner_id,store_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.params.id, sid]);
     }
+    res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+// Delete a user account
+app.delete('/api/users/:id', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const user = await one('SELECT * FROM users WHERE id=$1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' });
+    // Clean up related data
+    await q('DELETE FROM push_subscriptions WHERE user_id=$1', [user.id]);
+    await q('DELETE FROM preorders         WHERE user_id=$1', [user.id]);
+    await q('DELETE FROM owner_stores      WHERE owner_id=$1', [user.id]);
+    await q('DELETE FROM distributor_stores WHERE distributor_id=$1', [user.id]);
+    await q('UPDATE stores SET store_id=NULL WHERE id IN (SELECT store_id FROM owner_stores WHERE owner_id=$1)', [user.id]);
+    await q('UPDATE users SET store_id=NULL WHERE id=$1', [user.id]);
+    await q('DELETE FROM reps WHERE user_id=$1', [user.id]);
+    await q('DELETE FROM password_resets WHERE user_id=$1', [user.id]);
+    await q('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id=$1)', [user.id]);
+    await q('DELETE FROM carts WHERE user_id=$1', [user.id]);
+    await q('DELETE FROM users WHERE id=$1', [user.id]);
+    await logActivity('deleted_user', user.name || user.email, req.user.email);
+    res.json({ success: true });
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+// Admin reset a user's password
+app.patch('/api/users/:id/reset-password', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { new_password } = req.body;
+    if (!new_password || new_password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const user = await one('SELECT id, email, name FROM users WHERE id=$1', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const hash = bcrypt.hashSync(new_password, 10);
+    await q('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, user.id]);
+    await logActivity('reset_password', user.name || user.email, req.user.email);
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });

@@ -1,6 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#2563eb"/>
-  <path d="M16 5L5 11V21L16 27L27 21V11L16 5Z" stroke="white" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
-  <path d="M5 11L16 17M16 17L27 11M16 17V27" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
-  <path d="M10.5 8L21.5 14" stroke="white" stroke-width="1.2" opacity="0.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <!-- Cow print clip path for W -->
+    <clipPath id="clip-w">
+      <text x="4" y="50" font-family="'Arial Black', Arial" font-weight="900" font-size="62" letter-spacing="-8">WC</text>
+    </clipPath>
+    <clipPath id="clip-letter">
+      <rect width="64" height="64"/>
+    </clipPath>
+  </defs>
+
+  <!-- Blue rounded background -->
+  <rect width="64" height="64" rx="13" fill="#2563eb"/>
+
+  <!-- White letter base (WC merged) -->
+  <text x="2" y="50" font-family="'Arial Black', Arial" font-weight="900"
+        font-size="52" fill="white" letter-spacing="-6" clip-path="url(#clip-letter)">WC</text>
+
+  <!-- Cow print spots clipped to WC letters -->
+  <g clip-path="url(#clip-w)">
+    <!-- Large center blob -->
+    <ellipse cx="32" cy="26" rx="9" ry="11" fill="#1a1a1a" transform="rotate(-12 32 26)"/>
+    <!-- Top left blob -->
+    <ellipse cx="10" cy="16" rx="5" ry="7" fill="#1a1a1a" transform="rotate(20 10 16)"/>
+    <!-- Top right blob -->
+    <ellipse cx="54" cy="14" rx="6" ry="5" fill="#1a1a1a" transform="rotate(-15 54 14)"/>
+    <!-- Bottom left blob -->
+    <ellipse cx="8" cy="38" rx="4" ry="6" fill="#1a1a1a" transform="rotate(10 8 38)"/>
+    <!-- Bottom right blob -->
+    <ellipse cx="55" cy="36" rx="5" ry="7" fill="#1a1a1a" transform="rotate(-20 55 36)"/>
+    <!-- Mid left blob -->
+    <ellipse cx="19" cy="22" rx="4" ry="5" fill="#1a1a1a" transform="rotate(25 19 22)"/>
+    <!-- Mid right blob -->
+    <ellipse cx="46" cy="30" rx="4" ry="6" fill="#1a1a1a" transform="rotate(-10 46 30)"/>
+    <!-- Small accent top -->
+    <ellipse cx="33" cy="10" rx="3" ry="4" fill="#1a1a1a" transform="rotate(5 33 10)"/>
+    <!-- Small accent bottom -->
+    <ellipse cx="22" cy="42" rx="3" ry="4" fill="#1a1a1a" transform="rotate(-8 22 42)"/>
+  </g>
 </svg>

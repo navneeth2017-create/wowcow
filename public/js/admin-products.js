@@ -309,9 +309,8 @@ async function handleProductSubmit(e) {
     showToast(id ? 'Product updated' : 'Product added', 'success');
     closeModal();
     loadProductsTab();
-  } else if (result && result.error) {
-    showToast(result.error, 'error');
   }
+  // error toast handled by apiFetch
 }
 
 async function deleteProduct(id) {

@@ -105,6 +105,22 @@ async function migrate() {
   await q(schema);
   console.log('✅ Schema ready');
 
+  // ── Remove ADDY accounts that leaked into WowCow's public schema ────────────
+  try {
+    const addyAccounts = ['admin@addy.com','demo@addy.com'];
+    for (const email of addyAccounts) {
+      const u = await one('SELECT id FROM users WHERE email=$1', [email]);
+      if (u) {
+        await q('DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id=$1)', [u.id]);
+        await q('DELETE FROM carts WHERE user_id=$1', [u.id]);
+        await q('UPDATE orders SET user_id=NULL WHERE user_id=$1', [u.id]);
+        await q('DELETE FROM push_subscriptions WHERE user_id=$1', [u.id]);
+        await q('DELETE FROM users WHERE id=$1', [u.id]);
+        console.log('🧹 Removed leaked ADDY account: ' + email);
+      }
+    }
+  } catch(e) { console.log('ℹ️  ADDY account cleanup skipped:', e.message); }
+
   // ── Restore WowCow role constraint (repair if ADDY migration changed it) ──
   try {
     await q('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check');
@@ -203,10 +219,7 @@ async function getPriceForUser(productId, userId, role) {
 }
 
 // ── FAVICON ───────────────────────────────────────────────────────────────────
-app.get('/favicon.svg', (req, res) => {
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#2563eb"/><path d="M12 4L4 8V16L12 20L20 16V8L12 4Z" stroke="white" stroke-width="1.5" fill="none"/><path d="M4 8L12 12M12 12L20 8M12 12V20" stroke="white" stroke-width="1.5"/></svg>`);
-});
+// favicon served as static file from public/favicon.svg
 
 // ── PROTECTED DASHBOARD SERVING ───────────────────────────────────────────────
 function serveDashboard(allowedRoles) {
@@ -1062,10 +1075,8 @@ app.post('/api/products', authenticate, authorize('admin'), async (req, res) => 
     if (prices) {
       for (const [role, price] of Object.entries(prices)) {
         if (price !== '' && price != null) {
-          await q(
-            'INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3) ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price',
-            [p.id, role, parseFloat(price)]
-          );
+          await q('DELETE FROM product_prices WHERE product_id=$1 AND user_id IS NULL AND role=$2', [p.id, role]);
+          await q('INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3)', [p.id, role, parseFloat(price)]);
         }
       }
     }
@@ -1086,10 +1097,8 @@ app.patch('/api/products/:id', authenticate, authorize('admin'), async (req, res
     if (prices) {
       for (const [role, price] of Object.entries(prices)) {
         if (price !== '' && price != null) {
-          await q(
-            'INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3) ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price',
-            [req.params.id, role, parseFloat(price)]
-          );
+          await q('DELETE FROM product_prices WHERE product_id=$1 AND user_id IS NULL AND role=$2', [req.params.id, role]);
+          await q('INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,NULL,$2,$3)', [req.params.id, role, parseFloat(price)]);
         }
       }
     }

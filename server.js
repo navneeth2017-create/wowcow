@@ -105,6 +105,13 @@ async function migrate() {
   await q(schema);
   console.log('✅ Schema ready');
 
+  // ── Restore WowCow role constraint (repair if ADDY migration changed it) ──
+  try {
+    await q('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check');
+    await q("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('admin','investor','store_owner','distributor','rep','master_distributor'))");
+    console.log('✅ WowCow role constraint restored');
+  } catch(e) { console.log('ℹ️  Role constraint already correct'); }
+
   // ── Fix orders.user_id FK to allow NULL (enables user deletion) ──────────────
   try {
     await q('ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL');

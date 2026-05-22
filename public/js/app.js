@@ -1084,7 +1084,7 @@ async function handleSignup(e) {
 // ADMIN: TABS
 // ==========================================
 function switchTab(tab, btn) {
-  ['stores', 'pending', 'reps', 'users', 'products', 'orders', 'inventory', 'settings'].forEach(t => {
+  ['stores', 'pending', 'reps', 'users', 'products', 'orders', 'inventory', 'store-claims', 'settings'].forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (!el) return;
     if (t === tab) {
@@ -1107,6 +1107,7 @@ function switchTab(tab, btn) {
   if (tab === 'pending') loadPendingApprovals();
   if (tab === 'reps') loadAdminReps();
   if (tab === 'users') loadUsersTab();
+  if (tab === 'store-claims') loadWCStoreClaims();
   if (tab === 'products') loadProductsTab();
   if (tab === 'orders') { loadAdminOrders(); markOrdersSeen(); }
   if (tab === 'inventory') loadInventory();

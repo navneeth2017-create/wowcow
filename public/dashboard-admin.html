@@ -53,6 +53,7 @@
         <button class="admin-tab" onclick="switchTab('products',this)">Products <span id="low-stock-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:11px;padding:1px 7px;margin-left:4px;"></span></button>
         <button class="admin-tab" onclick="switchTab('orders',this)">Orders <span id="orders-badge" style="display:none;background:var(--green);color:#fff;border-radius:10px;font-size:11px;padding:1px 7px;margin-left:4px;"></span></button>
         <button class="admin-tab" onclick="switchTab('inventory',this)">Inventory</button>
+        <button class="admin-tab" onclick="switchTab('store-claims',this)">Network Stores <span id="claims-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:11px;padding:1px 7px;margin-left:4px;"></span></button>
         <button class="admin-tab" onclick="switchTab('settings',this)">Settings</button>
       </div>
 
@@ -93,10 +94,7 @@
                 <button id="btn-list-view" class="btn btn-sm" onclick="setStoreView('list')" style="background:var(--accent);color:#fff;padding:5px 12px;">☰ List</button>
                 <button id="btn-map-view" class="btn btn-sm" onclick="setStoreView('map')" style="background:var(--bg-secondary);color:var(--text);padding:5px 12px;">🗺 Map</button>
               </div>
-              <div style="display:flex;gap:6px;">
-                <button id="btn-list-view" class="btn btn-sm" onclick="setStoreView('list')" style="background:var(--accent);color:#fff;">☰ List</button>
-                <button id="btn-map-view" class="btn btn-sm" onclick="setStoreView('map')" style="background:var(--bg-secondary);color:var(--text);">🗺 Map</button>
-              </div>
+
             </div>
             <div class="toolbar-controls">
               <select class="filter-select" id="filter-category" onchange="adminFilter('category', this.value)"><option value="">All Categories</option></select>
@@ -255,6 +253,66 @@
       </div>
 
       <!-- SETTINGS TAB -->
+      <!-- Network Stores Tab -->
+      <div id="tab-store-claims" style="display:none;">
+        <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+          <div>
+            <h1>Network Stores</h1>
+            <p>Add stores for WowCow users and ADDY DSDs — all stores added here appear on both platforms</p>
+          </div>
+          <button class="btn btn-green" onclick="showNetworkStoreModal()">+ Add Store to Network</button>
+        </div>
+
+        <!-- Add Store Modal -->
+        <div class="modal-overlay" id="network-store-modal" onclick="if(event.target===this)this.classList.remove('active')">
+          <div class="modal" style="max-width:520px;">
+            <button class="close-btn" onclick="document.getElementById('network-store-modal').classList.remove('active')">&times;</button>
+            <h2>Add Store to Network</h2>
+            <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">This store will be visible and assignable on both WowCow and ADDY platforms.</p>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <input type="text" id="ns-name" placeholder="Store name *" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;width:100%;box-sizing:border-box;">
+              <input type="text" id="ns-address" placeholder="Address" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;width:100%;box-sizing:border-box;">
+              <div style="display:grid;grid-template-columns:1fr 70px 100px;gap:8px;">
+                <input type="text" id="ns-city" placeholder="City" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;">
+                <input type="text" id="ns-state" placeholder="ST" maxlength="2" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;">
+                <input type="text" id="ns-zip" placeholder="ZIP" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <input type="tel" id="ns-phone" placeholder="Phone" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;">
+                <input type="email" id="ns-email" placeholder="Email" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;">
+              </div>
+              <select id="ns-category" style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-size:14px;">
+                <option value="General">General</option>
+                <option value="Convenience Store">Convenience Store</option>
+                <option value="Smoke Shop">Smoke Shop</option>
+                <option value="Grocery">Grocery</option>
+                <option value="Pharmacy">Pharmacy</option>
+                <option value="Gas Station">Gas Station</option>
+                <option value="Vape Shop">Vape Shop</option>
+                <option value="Liquor Store">Liquor Store</option>
+              </select>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="ns-sync-addy" checked style="width:16px;height:16px;cursor:pointer;">
+                <label for="ns-sync-addy" style="font-size:13px;color:var(--text);cursor:pointer;">Also add to ADDY platform</label>
+              </div>
+              <button class="btn btn-green" onclick="submitNetworkStore()" style="margin-top:4px;">Add to Network</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- WowCow stores list -->
+        <div style="margin-bottom:28px;">
+          <div class="table-toolbar"><h2>All Network Stores</h2><span id="network-store-count" style="font-size:12px;color:var(--text-muted);"></span></div>
+          <div id="network-stores-list"><div class="loading">Loading...</div></div>
+        </div>
+
+        <!-- Pending ADDY Claims -->
+        <div>
+          <div class="table-toolbar"><h2>Pending ADDY Store Claims</h2></div>
+          <div id="wc-store-claims-list"><div class="loading">Loading...</div></div>
+        </div>
+      </div>
+
       <div id="tab-settings" style="display:none;">
         <div class="page-header">
           <div><h1>Settings</h1><p>Manage notification preferences</p></div>

@@ -1713,6 +1713,70 @@ app.patch('/api/inventory/:store_id/:product_id', authenticate, async (req, res)
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
+// ── NETWORK STORES (visible on both WowCow and ADDY) ─────────────────────────
+
+// Get all stores for network view
+app.get('/api/network-stores', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const stores = await all(
+      "SELECT id, name, address, city, state, zip, phone, email, category, status FROM stores ORDER BY name"
+    );
+    res.json(stores);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Add store to network (WowCow + optionally ADDY)
+app.post('/api/network-stores', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { name, address, city, state, zip, phone, email, category, sync_addy } = req.body;
+    if (!name) return res.status(400).json({ error: 'Store name is required' });
+
+    // Add to WowCow (public.stores)
+    const store = await one(
+      "INSERT INTO stores (name,address,city,state,zip,phone,email,category,status,monthly_revenue,owner_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active',0,'') RETURNING id",
+      [name, address||'', city||'', state||'', zip||'', phone||'', email||'', category||'General']
+    );
+
+    // Optionally sync to ADDY (addy.stores)
+    if (sync_addy) {
+      try {
+        await q(
+          "INSERT INTO addy.stores (name,address,city,state,zip,phone,email,category,store_approval_status,monthly_revenue,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'approved',0,'active')",
+          [name, address||'', city||'', state||'', zip||'', phone||'', email||'', category||'General']
+        );
+      } catch(e) { console.log('ADDY sync skipped:', e.message); }
+    }
+
+    await logActivity('added_network_store', name, req.user.email);
+    res.json({ success: true, id: store.id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ADDY STORE CLAIMS (read from addy schema) ────────────────────────────────
+app.get('/api/addy-store-claims', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const claims = await all(
+      "SELECT s.id, s.name, s.address, s.city, s.state, s.zip, s.store_approval_status, u.name as rep_name, u.email as rep_email FROM addy.stores s JOIN addy.users u ON u.id=s.exclusive_rep_id WHERE s.store_approval_status='pending' ORDER BY s.id DESC"
+    );
+    res.json(claims);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/addy-store-claims/:id/approve', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { approved } = req.body;
+    const store = await one('SELECT * FROM addy.stores WHERE id=$1', [req.params.id]);
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+    await q('UPDATE addy.stores SET store_approval_status=$1 WHERE id=$2', [approved ? 'approved' : 'rejected', req.params.id]);
+    if (approved) {
+      const exists = await one("SELECT id FROM stores WHERE LOWER(name)=LOWER($1)", [store.name]);
+      if (!exists) await q("INSERT INTO stores (name,address,city,state,zip,category,status,monthly_revenue) VALUES ($1,$2,$3,$4,$5,$6,'active',0)",
+        [store.name, store.address||'', store.city||'', store.state||'', store.zip||'', store.category||'General']);
+    }
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── MAP DATA ──────────────────────────────────────────────────────────────────
 app.get('/api/stores/map-data', authenticate, authorize('admin'), async (req, res) => {
   try {

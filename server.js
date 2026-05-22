@@ -1713,6 +1713,14 @@ app.patch('/api/inventory/:store_id/:product_id', authenticate, async (req, res)
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
+// ── MAP DATA ──────────────────────────────────────────────────────────────────
+app.get('/api/stores/map-data', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const stores = await all("SELECT id,name,address,city,state,zip,category,status,monthly_revenue FROM stores ORDER BY name");
+    res.json(stores);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── START ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 migrate().then(() => {

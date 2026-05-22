@@ -89,6 +89,14 @@
             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
               <h2 style="margin:0;">Store Directory</h2>
               <button class="btn btn-sm btn-danger" onclick="deleteAllStores()" style="font-size:12px;padding:5px 12px;">🗑 Delete All Stores</button>
+              <div style="display:flex;gap:6px;">
+                <button id="btn-list-view" class="btn btn-sm" onclick="setStoreView('list')" style="background:var(--accent);color:#fff;padding:5px 12px;">☰ List</button>
+                <button id="btn-map-view" class="btn btn-sm" onclick="setStoreView('map')" style="background:var(--bg-secondary);color:var(--text);padding:5px 12px;">🗺 Map</button>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button id="btn-list-view" class="btn btn-sm" onclick="setStoreView('list')" style="background:var(--accent);color:#fff;">☰ List</button>
+                <button id="btn-map-view" class="btn btn-sm" onclick="setStoreView('map')" style="background:var(--bg-secondary);color:var(--text);">🗺 Map</button>
+              </div>
             </div>
             <div class="toolbar-controls">
               <select class="filter-select" id="filter-category" onchange="adminFilter('category', this.value)"><option value="">All Categories</option></select>
@@ -124,6 +132,10 @@
             </table>
           </div>
           <div class="table-footer" id="table-footer"></div>
+          <!-- Map View -->
+          <div id="stores-map-view" style="display:none;padding:12px 0;">
+            <div id="stores-map" style="height:520px;border-radius:10px;border:1px solid var(--border);"></div>
+          </div>
         </div>
       </div>
 
@@ -374,13 +386,47 @@
         </div>
 
         <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
-          <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">Pricing by Tier</p>
-          <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">These are the base prices for each tier. Individual users can be overridden at the account level.</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div class="form-group"><label>Master Distributor ($)</label><input type="number" id="pf-price-master_distributor" step="0.01" min="0" placeholder="0.00"></div>
-            <div class="form-group"><label>Distributor ($)</label><input type="number" id="pf-price-distributor" step="0.01" min="0" placeholder="0.00"></div>
-            <div class="form-group"><label>Sales Rep ($)</label><input type="number" id="pf-price-rep" step="0.01" min="0" placeholder="0.00"></div>
-            <div class="form-group"><label>Wholesale / Store Owner ($)</label><input type="number" id="pf-price-store_owner" step="0.01" min="0" placeholder="0.00"></div>
+          <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">Pricing</p>
+          <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">Enter MSRP — Store Owner and Distributor prices auto-calculate. Rep price varies per person (override in user settings).</p>
+
+          <!-- MSRP field drives auto-calc -->
+          <div class="form-group" style="margin-bottom:12px;">
+            <label style="font-size:13px;font-weight:700;color:var(--text);">MSRP ($) <span style="font-weight:400;color:var(--text-muted);">— retail price customers pay</span></label>
+            <input type="number" step="0.01" min="0" id="pf-msrp" placeholder="e.g. 20.00"
+              oninput="updateWCPricePreview()"
+              style="width:100%;padding:10px 14px;border:2px solid var(--accent);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:15px;box-sizing:border-box;">
+          </div>
+
+          <!-- Auto-calc preview cards -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div style="background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Store Owner · 50% of MSRP</div>
+              <div id="preview-store_owner" style="font-size:20px;font-weight:800;color:var(--green);margin-top:4px;">—</div>
+            </div>
+            <div style="background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Distributor · 50% of Store</div>
+              <div id="preview-distributor" style="font-size:20px;font-weight:800;color:var(--accent);margin-top:4px;">—</div>
+            </div>
+            <div style="background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Master Distributor · 25% of Distrib.</div>
+              <div id="preview-master_distributor" style="font-size:20px;font-weight:800;color:var(--accent);margin-top:4px;">—</div>
+            </div>
+            <div style="background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Sales Rep · 20–50% (per person)</div>
+              <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">Set per user in their profile</div>
+            </div>
+          </div>
+
+          <!-- Hidden inputs that still get submitted — populated by auto-calc -->
+          <input type="hidden" id="pf-price-master_distributor">
+          <input type="hidden" id="pf-price-distributor">
+          <input type="hidden" id="pf-price-store_owner">
+
+          <!-- Rep price still manually settable as a default baseline -->
+          <div class="form-group">
+            <label style="font-size:12px;font-weight:600;color:var(--text-muted);">Sales Rep default price ($) <span style="font-weight:400;">— 20–50% of MSRP, varies per person</span></label>
+            <input type="number" step="0.01" min="0" id="pf-price-rep" placeholder="e.g. 12.00 (leave blank to set per user)"
+              style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:14px;box-sizing:border-box;">
           </div>
         </div>
 

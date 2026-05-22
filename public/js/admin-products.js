@@ -12,6 +12,27 @@ const PRODUCT_TIERS = [
 
 let _preorderRefreshInterval = null;
 
+function updateWCPricePreview() {
+  const msrp = parseFloat(document.getElementById('pf-msrp')?.value || 0);
+
+  const storePrice  = msrp * 0.50;           // 50% of MSRP
+  const distPrice   = storePrice * 0.50;      // 50% of store cost = 25% of MSRP
+  const masterPrice = distPrice * 0.75;       // 25% cheaper than distributor
+
+  // Update preview labels
+  const fmt = v => v > 0 ? '$' + v.toFixed(2) : '—';
+  const el = id => document.getElementById(id);
+
+  if (el('preview-store_owner'))        el('preview-store_owner').textContent        = fmt(storePrice);
+  if (el('preview-distributor'))        el('preview-distributor').textContent        = fmt(distPrice);
+  if (el('preview-master_distributor')) el('preview-master_distributor').textContent = fmt(masterPrice);
+
+  // Populate hidden inputs so they get submitted
+  if (el('pf-price-store_owner'))        el('pf-price-store_owner').value        = msrp > 0 ? storePrice.toFixed(2)  : '';
+  if (el('pf-price-distributor'))        el('pf-price-distributor').value        = msrp > 0 ? distPrice.toFixed(2)   : '';
+  if (el('pf-price-master_distributor')) el('pf-price-master_distributor').value = msrp > 0 ? masterPrice.toFixed(2) : '';
+}
+
 async function loadProductsTab() {
   const products = await apiFetch('/api/products/all');
   _allProducts = products || [];
@@ -155,10 +176,18 @@ function showEditProduct(id) {
   document.getElementById('pf-image-url').value = p.image_url || '';
   updateImagePreview(p.image_url);
   // Fill all tier prices
+  // Load prices
   for (const t of PRODUCT_TIERS) {
     const rp = (p.role_prices || []).find(x => x.role === t.key);
     const el = document.getElementById(`pf-price-${t.key}`);
     if (el) el.value = rp ? rp.price : '';
+  }
+  // Derive MSRP from store_owner price (store = 50% of MSRP → MSRP = store × 2)
+  const storePrice = (p.role_prices || []).find(x => x.role === 'store_owner');
+  const msrpEl = document.getElementById('pf-msrp');
+  if (msrpEl && storePrice) {
+    msrpEl.value = (parseFloat(storePrice.price) * 2).toFixed(2);
+    updateWCPricePreview();
   }
   document.getElementById('product-modal').classList.add('active');
 }

@@ -305,11 +305,17 @@ function showCheckout() {
   if (!items.length) return;
 
   const subtotal = items.reduce((a, i) => a + i.price_at_add * i.quantity, 0);
-  const shipping = subtotal > 500 ? 0 : 15;
-  const total = subtotal + shipping;
+  const shipping = subtotal >= 350 ? 0 : 35;
+  const isCard = _selectedPayment === 'card';
+  const processingFee = isCard ? Math.round(((subtotal + shipping + 0.30) / 0.971 - subtotal - shipping) * 100) / 100 : 0;
+  const total = Math.round((subtotal + shipping + processingFee) * 100) / 100;
 
   document.getElementById('co-subtotal').textContent = `$${subtotal.toFixed(2)}`;
   document.getElementById('co-shipping').textContent = shipping === 0 ? 'FREE' : `$${shipping.toFixed(2)}`;
+  const feeRow = document.getElementById('co-fee-row');
+  if (feeRow) { feeRow.style.display = processingFee > 0 ? 'flex' : 'none'; }
+  const feeEl = document.getElementById('co-fee');
+  if (feeEl) feeEl.textContent = `$${processingFee.toFixed(2)}`;
   document.getElementById('co-total').textContent = `$${total.toFixed(2)}`;
 
   document.getElementById('checkout-items').innerHTML = items.map(i => `
@@ -374,6 +380,7 @@ function selectPayment(method) {
   _selectedPayment = method;
   document.getElementById('pay-card').classList.toggle('selected', method === 'card');
   document.getElementById('pay-invoice').classList.toggle('selected', method === 'invoice');
+  updateCheckoutTotals();
 
   const cardWrap = document.getElementById('stripe-card-wrap');
   if (method === 'card' && _stripeActive) {
@@ -388,6 +395,21 @@ function selectPayment(method) {
   } else {
     cardWrap.style.display = 'none';
   }
+}
+
+function updateCheckoutTotals() {
+  const items = _cart.items || [];
+  const subtotal = items.reduce((a, i) => a + i.price_at_add * i.quantity, 0);
+  const shipping = subtotal >= 350 ? 0 : 35;
+  const isCard = _selectedPayment === 'card';
+  const processingFee = isCard ? Math.round(((subtotal + shipping + 0.30) / 0.971 - subtotal - shipping) * 100) / 100 : 0;
+  const total = Math.round((subtotal + shipping + processingFee) * 100) / 100;
+  document.getElementById('co-shipping').textContent = shipping === 0 ? 'FREE' : `$${shipping.toFixed(2)}`;
+  const feeRow = document.getElementById('co-fee-row');
+  if (feeRow) { feeRow.style.display = processingFee > 0 ? 'flex' : 'none'; }
+  const feeEl = document.getElementById('co-fee');
+  if (feeEl) feeEl.textContent = `$${processingFee.toFixed(2)}`;
+  document.getElementById('co-total').textContent = `$${total.toFixed(2)}`;
 }
 
 async function placeOrder() {
@@ -405,8 +427,9 @@ async function placeOrder() {
     let stripePaymentIntentId = null;
     if (_selectedPayment === 'card' && _stripeActive && _stripeCardElement) {
       const subtotal = (_cart.items || []).reduce((a, i) => a + i.price_at_add * i.quantity, 0);
-      const shipping = subtotal > 500 ? 0 : 15;
-      const totalCents = Math.round((subtotal + shipping) * 100);
+      const shipping = subtotal >= 350 ? 0 : 35;
+      const processingFee = Math.round(((subtotal + shipping + 0.30) / 0.971 - subtotal - shipping) * 100) / 100;
+      const totalCents = Math.round((subtotal + shipping + processingFee) * 100);
       const intentRes = await apiFetch('/api/payment/intent', { method: 'POST', body: JSON.stringify({ amount_cents: totalCents }) });
       if (!intentRes?.clientSecret) { showToast('Card payment error. Please try invoice instead.', 'error'); return; }
 

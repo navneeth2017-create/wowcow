@@ -128,6 +128,12 @@ async function migrate() {
     console.log('✅ WowCow role constraint restored');
   } catch(e) { console.log('ℹ️  Role constraint already correct'); }
 
+  // ── Add processing_fee column to orders ──────────────────────────────────────
+  try {
+    await q('ALTER TABLE orders ADD COLUMN IF NOT EXISTS processing_fee NUMERIC(10,2) NOT NULL DEFAULT 0');
+    console.log('✅ processing_fee column added to orders');
+  } catch(e) { console.log('ℹ️  processing_fee already exists'); }
+
   // ── Fix orders.user_id FK to allow NULL (enables user deletion) ──────────────
   try {
     await q('ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL');
@@ -1517,7 +1523,12 @@ app.post('/api/orders', authenticate, async (req, res) => {
 
     const subtotal = items.reduce((a,i)=>a+parseFloat(i.price_at_add)*i.quantity,0);
     const shipping_cost = subtotal > 500 ? 0 : 15;
-    const total = subtotal + shipping_cost;
+    // Stripe fee passthrough: customer pays fee so we receive full amount
+    // Formula: (subtotal + shipping + $0.30) / (1 - 0.029) - subtotal - shipping
+    const processing_fee = payment_method === 'card'
+      ? Math.round(((subtotal + shipping_cost + 0.30) / 0.971 - subtotal - shipping_cost) * 100) / 100
+      : 0;
+    const total = Math.round((subtotal + shipping_cost + processing_fee) * 100) / 100;
     const payment_status = payment_method === 'card' ? 'paid' : 'unpaid';
 
     const client = await pool.connect();
@@ -1525,9 +1536,9 @@ app.post('/api/orders', authenticate, async (req, res) => {
     try {
       await client.query('BEGIN');
       const or = await client.query(
-        `INSERT INTO orders (user_id,store_id,payment_method,payment_status,subtotal,shipping_cost,total,shipping_name,shipping_address,shipping_city,shipping_state,shipping_zip,notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [userId, store_id||null, payment_method, payment_status, subtotal, shipping_cost, total,
+        `INSERT INTO orders (user_id,store_id,payment_method,payment_status,subtotal,shipping_cost,processing_fee,total,shipping_name,shipping_address,shipping_city,shipping_state,shipping_zip,notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+        [userId, store_id||null, payment_method, payment_status, subtotal, shipping_cost, processing_fee, total,
          shipping_name||'', shipping_address, shipping_city, shipping_state, shipping_zip, notes||'']
       );
       order = or.rows[0];
@@ -1576,6 +1587,7 @@ app.post('/api/orders', authenticate, async (req, res) => {
           <table style="width:100%;border-collapse:collapse;">
             <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Subtotal</td><td style="padding:4px 0;text-align:right;font-size:13px;">$${parseFloat(order.subtotal).toFixed(2)}</td></tr>
             <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Shipping</td><td style="padding:4px 0;text-align:right;font-size:13px;">${parseFloat(order.shipping_cost) === 0 ? 'FREE' : '$' + parseFloat(order.shipping_cost).toFixed(2)}</td></tr>
+            ${parseFloat(order.processing_fee||0) > 0 ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Processing Fee (2.9% + $0.30)</td><td style="padding:4px 0;text-align:right;font-size:13px;">$${parseFloat(order.processing_fee).toFixed(2)}</td></tr>` : ''}
             <tr style="border-top:2px solid #e2e8f0;"><td style="padding:10px 0 0;font-weight:700;font-size:15px;">Total</td><td style="padding:10px 0 0;text-align:right;font-weight:700;font-size:15px;color:#2563eb;">$${parseFloat(order.total).toFixed(2)}</td></tr>
           </table>
         </div>
@@ -1733,16 +1745,16 @@ app.post('/api/network-stores', authenticate, authorize('admin'), async (req, re
 
     // Add to WowCow (public.stores)
     const store = await one(
-      "INSERT INTO stores (name,address,city,state,zip,phone,email,category,status,monthly_revenue,owner_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active',0,'') RETURNING id",
-      [name, address||'', city||'', state||'', zip||'', phone||'', email||'', category||'General']
+      "INSERT INTO stores (name,owner_name,email,address,city,state,zip,category,status,monthly_revenue,wholesale_price,retail_price,distribution_cost) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active',0,0,0,0) RETURNING id",
+      [name, name, email||'', address||'', city||'', state||'', zip||'', category||'General']
     );
 
     // Optionally sync to ADDY (addy.stores)
     if (sync_addy) {
       try {
         await q(
-          "INSERT INTO addy.stores (name,address,city,state,zip,phone,email,category,store_approval_status,monthly_revenue,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'approved',0,'active')",
-          [name, address||'', city||'', state||'', zip||'', phone||'', email||'', category||'General']
+          "INSERT INTO addy.stores (name,address,city,state,zip,email,category,store_approval_status,monthly_revenue,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'approved',0,'active')",
+          [name, address||'', city||'', state||'', zip||'', email||'', category||'General']
         );
       } catch(e) { console.log('ADDY sync skipped:', e.message); }
     }

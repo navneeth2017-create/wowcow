@@ -2387,3 +2387,126 @@ async function removeNotifEmail(id) {
     loadNotifEmails();
   }
 }
+
+
+// ── STORE MAP VIEW ────────────────────────────────────────────────────────────
+let _storeMap = null;
+
+function setStoreView(view) {
+  const tableWrap = document.querySelector('#tab-stores .table-wrap');
+  const tableFooter = document.getElementById('table-footer');
+  const mapEl = document.getElementById('stores-map-view');
+  const listBtn = document.getElementById('btn-list-view');
+  const mapBtn = document.getElementById('btn-map-view');
+  if (view === 'map') {
+    if (tableWrap) tableWrap.style.display = 'none';
+    if (tableFooter) tableFooter.style.display = 'none';
+    if (mapEl) mapEl.style.display = 'block';
+    if (listBtn) { listBtn.style.background='var(--bg-secondary)'; listBtn.style.color='var(--text)'; }
+    if (mapBtn) { mapBtn.style.background='var(--accent)'; mapBtn.style.color='#fff'; }
+    loadStoreMap();
+  } else {
+    if (tableWrap) tableWrap.style.display = '';
+    if (tableFooter) tableFooter.style.display = '';
+    if (mapEl) mapEl.style.display = 'none';
+    if (listBtn) { listBtn.style.background='var(--accent)'; listBtn.style.color='#fff'; }
+    if (mapBtn) { mapBtn.style.background='var(--bg-secondary)'; mapBtn.style.color='var(--text)'; }
+  }
+}
+
+async function loadStoreMap() {
+  const mapEl = document.getElementById('stores-map');
+  if (!mapEl) return;
+  if (!window.L) {
+    await new Promise((res, rej) => {
+      const css = document.createElement('link'); css.rel='stylesheet';
+      css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+      const s = document.createElement('script');
+      s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    });
+  }
+  if (_storeMap) { _storeMap.remove(); _storeMap=null; }
+  _storeMap = L.map('stores-map').setView([39.5,-98.35],4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution:'© OpenStreetMap contributors' }).addTo(_storeMap);
+  const stores = await apiFetch('/api/stores/map-data');
+  if (!stores || !stores.length) {
+    const info = L.control({position:'topright'});
+    info.onAdd = () => { const d=L.DomUtil.create('div'); d.style.cssText='background:#fff;padding:8px 14px;border-radius:8px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.15);'; d.textContent='No stores yet'; return d; };
+    info.addTo(_storeMap); return;
+  }
+  for (const store of stores) {
+    const q = [store.address,store.city,store.state,'USA'].filter(Boolean).join(', ');
+    if (!q.trim()) continue;
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(q)+'&format=json&limit=1',{headers:{'User-Agent':'StoreMap/1.0'}});
+      const data = await r.json();
+      if (data && data[0]) L.marker([parseFloat(data[0].lat),parseFloat(data[0].lon)]).addTo(_storeMap).bindPopup('<strong>'+store.name+'</strong><br>'+[store.city,store.state].filter(Boolean).join(', '));
+      await new Promise(r=>setTimeout(r,1100));
+    } catch(e){}
+  }
+}
+
+// ── NETWORK STORES & ADDY CLAIMS ─────────────────────────────────────────────
+async function loadWCStoreClaims() {
+  await loadNetworkStores();
+  await loadAddyClaims();
+}
+
+function showNetworkStoreModal() {
+  ['ns-name','ns-address','ns-city','ns-state','ns-zip','ns-phone','ns-email'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('network-store-modal')?.classList.add('active');
+}
+
+async function submitNetworkStore() {
+  const name = document.getElementById('ns-name')?.value?.trim();
+  if (!name) { showToast('Store name is required','error'); return; }
+  const syncAddy = document.getElementById('ns-sync-addy')?.checked;
+  const result = await apiFetch('/api/network-stores', { method:'POST', body: JSON.stringify({
+    name, sync_addy: syncAddy,
+    address: document.getElementById('ns-address')?.value?.trim()||'',
+    city:    document.getElementById('ns-city')?.value?.trim()||'',
+    state:   document.getElementById('ns-state')?.value?.trim()||'',
+    zip:     document.getElementById('ns-zip')?.value?.trim()||'',
+    phone:   document.getElementById('ns-phone')?.value?.trim()||'',
+    email:   document.getElementById('ns-email')?.value?.trim()||'',
+    category:document.getElementById('ns-category')?.value||'General',
+  })});
+  if (result && result.success) {
+    showToast('Store added to network ✓'+(syncAddy?' — also synced to ADDY':''),'success');
+    document.getElementById('network-store-modal')?.classList.remove('active');
+    loadNetworkStores();
+  }
+}
+
+async function loadNetworkStores() {
+  const el = document.getElementById('network-stores-list');
+  const countEl = document.getElementById('network-store-count');
+  if (!el) return;
+  const stores = await apiFetch('/api/network-stores');
+  if (!stores || !stores.length) { el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text-muted);">No stores yet — click + Add Store to Network</div>'; return; }
+  if (countEl) countEl.textContent = stores.length+' stores';
+  el.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Name</th><th>City</th><th>State</th><th>Category</th><th>Status</th></tr></thead><tbody>
+    ${stores.map(s=>`<tr><td style="font-weight:600;">${esc(s.name)}</td><td>${esc(s.city||'—')}</td><td>${esc(s.state||'—')}</td><td>${esc(s.category||'General')}</td><td><span class="status-badge ${s.status||'active'}">${s.status||'active'}</span></td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+async function loadAddyClaims() {
+  const el = document.getElementById('wc-store-claims-list');
+  if (!el) return;
+  const claims = await apiFetch('/api/addy-store-claims');
+  const badge = document.getElementById('claims-badge');
+  if (badge) { badge.textContent=(claims||[]).length; badge.style.display=(claims||[]).length?'inline':'none'; }
+  if (!claims||!claims.length) { el.innerHTML='<div style="padding:32px;text-align:center;color:var(--text-muted);"><div style="font-size:28px;margin-bottom:8px;">✅</div><div>No pending ADDY store claims</div></div>'; return; }
+  el.innerHTML = claims.map(s=>`<div style="display:flex;align-items:center;gap:16px;padding:16px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--bg-card);">
+    <div style="flex:1;"><div style="font-weight:700;">${esc(s.name)}</div><div style="font-size:13px;color:var(--text-secondary);">${esc([s.address,s.city,s.state].filter(Boolean).join(', '))}</div><div style="font-size:12px;color:var(--text-muted);">By: <strong>${esc(s.rep_name||s.rep_email||'?')}</strong></div></div>
+    <div style="display:flex;gap:8px;"><button class="btn btn-sm btn-green" onclick="approveAddyClaim(${s.id},true)">✓ Approve</button><button class="btn btn-sm btn-danger" onclick="approveAddyClaim(${s.id},false)">Reject</button></div>
+  </div>`).join('');
+}
+
+async function approveAddyClaim(id, approved) {
+  const result = await apiFetch('/api/addy-store-claims/'+id+'/approve',{method:'PATCH',body:JSON.stringify({approved})});
+  if (result&&result.success) { showToast(approved?'Claim approved ✓':'Claim rejected',approved?'success':'info'); loadAddyClaims(); }
+}

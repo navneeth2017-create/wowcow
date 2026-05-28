@@ -2492,6 +2492,15 @@ async function loadStoreMap() {
 }
 
 // ── NETWORK STORES & ADDY CLAIMS ─────────────────────────────────────────────
+async function syncAllToAddy() {
+  if (!confirm('Sync all active WowCow stores to the ADDY platform? Stores already on ADDY will be skipped.')) return;
+  const result = await apiFetch('/api/network-stores/sync-to-addy', { method: 'POST' });
+  if (result && result.success) {
+    showToast(`✓ ${result.message}`, 'success');
+    loadNetworkStores();
+  }
+}
+
 async function loadWCStoreClaims() {
   await loadNetworkStores();
   await loadAddyClaims();

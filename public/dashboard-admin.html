@@ -260,7 +260,10 @@
             <h1>Network Stores</h1>
             <p>Add stores for WowCow users and ADDY DSDs — all stores added here appear on both platforms</p>
           </div>
-          <button class="btn btn-green" onclick="showNetworkStoreModal()">+ Add Store to Network</button>
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-outline" onclick="syncAllToAddy()" style="font-size:13px;">↑ Sync All to ADDY</button>
+            <button class="btn btn-green" onclick="showNetworkStoreModal()">+ Add Store to Network</button>
+          </div>
         </div>
 
         <!-- Add Store Modal -->

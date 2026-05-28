@@ -1744,6 +1744,27 @@ app.patch('/api/inventory/:store_id/:product_id', authenticate, async (req, res)
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
+// ── SYNC ALL WOWCOW STORES TO ADDY ──────────────────────────────────────────
+app.post('/api/network-stores/sync-to-addy', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const stores = await all('SELECT * FROM stores WHERE status=$1', ['active']);
+    let synced = 0, skipped = 0;
+    for (const s of stores) {
+      const exists = await one("SELECT id FROM addy.stores WHERE LOWER(name)=LOWER($1)", [s.name]);
+      if (exists) { skipped++; continue; }
+      try {
+        await q(
+          "INSERT INTO addy.stores (name,owner_name,email,address,city,state,zip,category,store_approval_status,monthly_revenue,wholesale_price,retail_price,distribution_cost,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'approved',0,0,0,0,'active')",
+          [s.name, s.owner_name||s.name, s.email||'', s.address||'', s.city||'', s.state||'', s.zip||'', s.category||'General']
+        );
+        synced++;
+      } catch(e) { console.log('Skipping store:', s.name, e.message); skipped++; }
+    }
+    await logActivity('synced_stores_to_addy', `${synced} stores synced`, req.user.email);
+    res.json({ success: true, synced, skipped, message: `${synced} store(s) synced to ADDY, ${skipped} already existed` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── NETWORK STORES (visible on both WowCow and ADDY) ─────────────────────────
 
 // Get all stores for network view
@@ -1772,8 +1793,8 @@ app.post('/api/network-stores', authenticate, authorize('admin'), async (req, re
     if (sync_addy) {
       try {
         await q(
-          "INSERT INTO addy.stores (name,address,city,state,zip,email,category,store_approval_status,monthly_revenue,status) VALUES ($1,$2,$3,$4,$5,$6,$7,'approved',0,'active')",
-          [name, address||'', city||'', state||'', zip||'', email||'', category||'General']
+          "INSERT INTO addy.stores (name,owner_name,email,address,city,state,zip,category,store_approval_status,monthly_revenue,wholesale_price,retail_price,distribution_cost,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'approved',0,0,0,0,'active')",
+          [name, name, email||'', address||'', city||'', state||'', zip||'', category||'General']
         );
       } catch(e) { console.log('ADDY sync skipped:', e.message); }
     }

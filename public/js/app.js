@@ -1146,11 +1146,9 @@ async function loadPendingApprovals() {
 
 // Pricing tiers (internal names never shown to users)
 const PRICING_TIERS = [
-  { value: 'master_distributor', label: 'Master Distributor' },
-  { value: 'distributor',        label: 'Distributor' },
-  { value: 'rep',                label: 'Sales Rep' },
-  { value: 'store_owner',        label: 'Wholesale / Store Owner' },
-  { value: 'custom',             label: 'Custom (set per product)' },
+  { value: 'store_owner', label: 'Wholesale / Store Owner — 50% of MSRP (70% first order)' },
+  { value: 'rep',         label: 'Sales Rep — custom % per person' },
+  { value: 'custom',      label: 'Custom (set per product)' },
 ];
 
 let _approveTargetUserId = null;
@@ -1198,14 +1196,46 @@ async function renderTierPreview(tier) {
         </div>`;
       }).join('')}
     `;
+  } else if (tier === 'rep') {
+    // Rep price is custom - show custom price inputs
+    previewWrap.innerHTML = `
+      <p style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Sales Rep — set custom price per product:</p>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Based on your agreement (20–50% of MSRP)</p>
+      ${_approveProducts.map(p => {
+        const storeRp = (p.role_prices || []).find(rp => rp.role === 'store_owner');
+        const msrp = storeRp ? parseFloat(storeRp.price) * 2 : 0;
+        const repRp = (p.role_prices || []).find(rp => rp.role === 'rep');
+        return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+          <span style="flex:1;font-size:13px;color:var(--text);">${esc(p.name)}</span>
+          ${msrp > 0 ? `<span style="font-size:11px;color:var(--text-muted);">MSRP $${msrp.toFixed(2)}</span>` : ''}
+          <input type="number" step="0.01" min="0" placeholder="0.00"
+            id="custom-price-${p.id}"
+            style="width:90px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text);font-size:13px;"
+            value="${repRp ? repRp.price : ''}">
+        </div>`;
+      }).join('')}
+    `;
   } else {
-    // Show what prices they'll get from the selected tier
+    // Show auto-calculated prices from stored role_prices
+    const tierMult = { store_owner: 0.50 };
+    const mult = tierMult[tier];
     const rows = _approveProducts.map(p => {
       const rp = (p.role_prices || []).find(r => r.role === tier);
-      const price = rp ? `$${parseFloat(rp.price).toFixed(2)}` : '<span style="color:var(--red)">No price set</span>';
+      let price;
+      if (rp) {
+        price = `$${parseFloat(rp.price).toFixed(2)}`;
+      } else if (mult) {
+        // Calculate from store_owner price if no explicit price set
+        const storePr = (p.role_prices || []).find(r => r.role === 'store_owner');
+        price = storePr
+          ? `$${(Math.floor(parseFloat(storePr.price) * 2 * mult * 100) / 100).toFixed(2)}`
+          : '<span style="color:var(--red)">No MSRP set</span>';
+      } else {
+        price = '<span style="color:var(--red)">No price set</span>';
+      }
       return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
         <span style="color:var(--text);">${esc(p.name)}</span>
-        <span style="font-weight:600;color:var(--text);">${price}</span>
+        <span style="font-weight:600;color:var(--green);">${price}</span>
       </div>`;
     }).join('');
     previewWrap.innerHTML = `

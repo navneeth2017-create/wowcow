@@ -4,33 +4,40 @@ let _allProducts = [];
 
 // Internal tier definitions — labels shown to admin only, never to end users
 const PRODUCT_TIERS = [
-  { key: 'master_distributor', label: 'Master Distributor' },
-  { key: 'distributor',        label: 'Distributor' },
-  { key: 'rep',                label: 'Sales Rep' },
-  { key: 'store_owner',        label: 'Wholesale / Store Owner' },
+  { key: 'store_owner', label: 'Wholesale / Store Owner (50% of MSRP)' },
+  { key: 'rep',         label: 'Sales Rep (custom %)' },
 ];
 
 let _preorderRefreshInterval = null;
 
+function truncate2(n) {
+  // Truncate to 2 decimal places WITHOUT rounding — preserves $3.99, $1.49 etc
+  return Math.floor(n * 100) / 100;
+}
+
 function updateWCPricePreview() {
   const msrp = parseFloat(document.getElementById('pf-msrp')?.value || 0);
 
-  const storePrice  = msrp * 0.50;           // 50% of MSRP
-  const distPrice   = storePrice * 0.50;      // 50% of store cost = 25% of MSRP
-  const masterPrice = distPrice * 0.75;       // 25% cheaper than distributor
+  // All calculated directly from MSRP — not chained
+  // All calculated directly from MSRP
+  // Store Owner        = 50% of MSRP
+  // Distributor        = 35% of MSRP
+  // Master Distributor = 25% of MSRP (best deal — highest volume)
+  // Sales Rep          = set per user
+  const storePrice  = truncate2(msrp * 0.50);
+  const distPrice   = truncate2(msrp * 0.35);
+  const masterPrice = truncate2(msrp * 0.25);
 
-  // Update preview labels
   const fmt = v => v > 0 ? '$' + v.toFixed(2) : '—';
   const el = id => document.getElementById(id);
 
-  if (el('preview-store_owner'))        el('preview-store_owner').textContent        = fmt(storePrice);
-  if (el('preview-distributor'))        el('preview-distributor').textContent        = fmt(distPrice);
-  if (el('preview-master_distributor')) el('preview-master_distributor').textContent = fmt(masterPrice);
+  const firstOrderPrice = truncate2(msrp * 0.70);
+  if (el('preview-store_owner_first')) el('preview-store_owner_first').textContent = fmt(firstOrderPrice);
+  if (el('preview-store_owner'))       el('preview-store_owner').textContent       = fmt(storePrice);
 
-  // Populate hidden inputs so they get submitted
-  if (el('pf-price-store_owner'))        el('pf-price-store_owner').value        = msrp > 0 ? storePrice.toFixed(2)  : '';
-  if (el('pf-price-distributor'))        el('pf-price-distributor').value        = msrp > 0 ? distPrice.toFixed(2)   : '';
-  if (el('pf-price-master_distributor')) el('pf-price-master_distributor').value = msrp > 0 ? masterPrice.toFixed(2) : '';
+  // Populate hidden input for store_owner (repeat price stored; first-order handled server-side)
+  if (el('pf-price-store_owner'))  el('pf-price-store_owner').value  = msrp > 0 ? storePrice.toFixed(2) : '';
+  if (el('pf-price-rep'))          el('pf-price-rep').value = '';
 }
 
 async function loadProductsTab() {

@@ -462,11 +462,11 @@
               <div id="preview-store_owner" style="font-size:20px;font-weight:800;color:var(--green);margin-top:4px;">—</div>
             </div>
             <div style="background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Distributor · 50% of Store</div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Distributor · 35% of MSRP</div>
               <div id="preview-distributor" style="font-size:20px;font-weight:800;color:var(--accent);margin-top:4px;">—</div>
             </div>
             <div style="background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Master Distributor · 25% of Distrib.</div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);">Master Distributor · 35% of MSRP</div>
               <div id="preview-master_distributor" style="font-size:20px;font-weight:800;color:var(--accent);margin-top:4px;">—</div>
             </div>
             <div style="background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">
@@ -476,16 +476,16 @@
           </div>
 
           <!-- Hidden inputs that still get submitted — populated by auto-calc -->
-          <input type="hidden" id="pf-price-master_distributor">
-          <input type="hidden" id="pf-price-distributor">
+          
+          
           <input type="hidden" id="pf-price-store_owner">
 
           <!-- Rep price still manually settable as a default baseline -->
-          <div class="form-group">
-            <label style="font-size:12px;font-weight:600;color:var(--text-muted);">Sales Rep default price ($) <span style="font-weight:400;">— 20–50% of MSRP, varies per person</span></label>
-            <input type="number" step="0.01" min="0" id="pf-price-rep" placeholder="e.g. 12.00 (leave blank to set per user)"
-              style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text);font-family:inherit;font-size:14px;box-sizing:border-box;">
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--text-muted);">
+            <strong style="color:var(--text);">Sales Rep pricing</strong> — set individually per rep when approving their account.
+            Their rate (20–50%) is based on your agreement with them.
           </div>
+          <input type="hidden" id="pf-price-rep">
         </div>
 
         <div class="form-group">

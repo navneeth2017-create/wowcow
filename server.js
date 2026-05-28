@@ -218,8 +218,22 @@ async function logActivity(action, targetName, userEmail) {
 }
 
 async function getPriceForUser(productId, userId, role) {
+  // Per-user price override takes priority
   const userPrice = await one('SELECT price FROM product_prices WHERE product_id=$1 AND user_id=$2', [productId, userId]);
   if (userPrice) return parseFloat(userPrice.price);
+
+  // Store owners: first order = 70% of MSRP, repeat = 50% of MSRP
+  if (role === 'store_owner') {
+    const product = await one('SELECT wholesale_price FROM products WHERE id=$1', [productId]);
+    const storePrice = product ? parseFloat(product.wholesale_price || 0) : 0;
+    if (storePrice > 0) {
+      const orderCount = await one("SELECT COUNT(*) as cnt FROM orders WHERE user_id=$1 AND status NOT IN ('cancelled')", [userId]);
+      const isFirst = !orderCount || parseInt(orderCount.cnt) === 0;
+      if (isFirst) return Math.floor(storePrice * 1.4 * 100) / 100; // wholesale×1.4 = 70% of MSRP
+      return storePrice; // 50% of MSRP
+    }
+  }
+
   const rolePrice = await one('SELECT price FROM product_prices WHERE product_id=$1 AND role=$2 AND user_id IS NULL', [productId, role]);
   return rolePrice ? parseFloat(rolePrice.price) : null;
 }
@@ -827,24 +841,20 @@ app.get('/api/pending-users', authenticate, authorize('admin'), async (req, res)
 
 // Set/change pricing tier for any user
 async function applyPricingTier(userId, tier, customPrices) {
-  const products = await all('SELECT id FROM products WHERE active=1');
+  const products = await all('SELECT id FROM products WHERE active=1 OR active=2');
   for (const p of products) {
     let price = null;
     if (tier === 'custom' && customPrices && customPrices[p.id] !== undefined) {
-      price = parseFloat(customPrices[p.id]);
+      price = Math.floor(parseFloat(customPrices[p.id]) * 100) / 100;
     } else if (tier !== 'custom') {
       const rp = await one('SELECT price FROM product_prices WHERE product_id=$1 AND role=$2 AND user_id IS NULL', [p.id, tier]);
-      if (rp) price = parseFloat(rp.price);
+      if (rp) price = Math.floor(parseFloat(rp.price) * 100) / 100; // truncate, never round up
     }
-    if (price !== null && !isNaN(price)) {
-      await q(
-        `INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,$2,NULL,$3)
-         ON CONFLICT (product_id,user_id,role) DO UPDATE SET price=EXCLUDED.price`,
-        [p.id, userId, price]
-      );
+    if (price !== null && !isNaN(price) && price > 0) {
+      await q('DELETE FROM product_prices WHERE product_id=$1 AND user_id=$2', [p.id, userId]);
+      await q('INSERT INTO product_prices (product_id,user_id,role,price) VALUES ($1,$2,$3,$4)', [p.id, userId, tier, price]);
     }
   }
-  // Persist the tier name on the user so it can be displayed in the admin UI
   await q('UPDATE users SET pricing_tier=$1 WHERE id=$2', [tier, userId]);
 }
 
@@ -1731,7 +1741,7 @@ app.patch('/api/inventory/:store_id/:product_id', authenticate, async (req, res)
 app.get('/api/network-stores', authenticate, authorize('admin'), async (req, res) => {
   try {
     const stores = await all(
-      "SELECT id, name, address, city, state, zip, phone, email, category, status FROM stores ORDER BY name"
+      "SELECT id, name, address, city, state, zip, email, category, status FROM stores ORDER BY name"
     );
     res.json(stores);
   } catch(e) { res.status(500).json({ error: e.message }); }

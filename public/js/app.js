@@ -2102,7 +2102,14 @@ async function loadInventory() {
 
   const rows = await apiFetch('/api/inventory');
   if (!rows || !rows.length) {
-    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);">No inventory data available yet.</div>';
+    el.innerHTML = `<div style="padding:48px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:12px;">📦</div>
+      <div style="font-weight:600;color:var(--text);margin-bottom:6px;">No inventory data yet</div>
+      <div style="font-size:13px;color:var(--text-muted);max-width:360px;margin:0 auto;">
+        Inventory levels populate automatically when orders are delivered to stores.
+        Once your first order ships, stock levels will appear here.
+      </div>
+    </div>`;
     return;
   }
   _inventoryData = rows;

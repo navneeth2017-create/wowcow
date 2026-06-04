@@ -2561,3 +2561,13 @@ async function approveAddyClaim(id, approved) {
   const result = await apiFetch('/api/addy-store-claims/'+id+'/approve',{method:'PATCH',body:JSON.stringify({approved})});
   if (result&&result.success) { showToast(approved?'Claim approved ✓':'Claim rejected',approved?'success':'info'); loadAddyClaims(); }
 }
+
+async function triggerBackup() {
+  const status = document.getElementById('backup-status');
+  if (status) status.textContent = 'Starting backup...';
+  const result = await apiFetch('/api/admin/backup-now', { method: 'POST' });
+  if (result && result.success) {
+    if (status) status.textContent = '✓ Backup running — check Railway logs for progress';
+    showToast('Backup started ✓', 'success');
+  }
+}

@@ -349,6 +349,15 @@
         </div>
 
         <div class="table-card" style="max-width:640px;margin-top:20px;">
+          <div class="table-toolbar" style="margin-bottom:24px;">
+            <h2>Database Backup</h2>
+          </div>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px;max-width:500px;">
+            <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;">Backblaze B2 Nightly Backup</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Runs automatically every night at 3am UTC. Keeps 7 daily + 4 weekly backups. Requires B2_KEY_ID, B2_APP_KEY and B2_BUCKET_ID env vars set in Railway.</div>
+            <button class="btn btn-green" onclick="triggerBackup()" style="font-size:13px;">▶ Run Backup Now</button>
+            <span id="backup-status" style="margin-left:12px;font-size:13px;color:var(--text-muted);"></span>
+          </div>
           <div class="table-toolbar"><h2>What triggers a notification</h2></div>
           <div style="padding:4px 4px 16px;display:flex;flex-direction:column;gap:12px;">
             <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--bg-secondary);border-radius:10px;">

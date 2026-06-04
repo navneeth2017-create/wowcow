@@ -1,4 +1,5 @@
 const express = require('express');
+const { startBackupScheduler } = require('./backup_module');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -1831,10 +1832,21 @@ app.patch('/api/addy-store-claims/:id/approve', authenticate, authorize('admin')
 
 
 
+// ── MANUAL BACKUP TRIGGER (admin only) ───────────────────────────────────────
+app.post('/api/admin/backup-now', authenticate, authorize('admin'), async (req, res) => {
+  res.json({ success: true, message: 'Backup started — check server logs for status' });
+  const { runBackup } = require('./backup_module');
+  runBackup(pool, 'public', 'wowcow').catch(console.error);
+});
+
 // ── START ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 migrate().then(() => {
-  app.listen(PORT, '0.0.0.0', () => console.log(`🐄 WowCow running on port ${PORT}`));
+  
+// Start nightly backup scheduler
+startBackupScheduler(pool, 'public', 'wowcow');
+
+app.listen(PORT, '0.0.0.0', () => console.log(`🐄 WowCow running on port ${PORT}`));
 }).catch(err => {
   console.error('❌ Failed to start:', err);
   process.exit(1);

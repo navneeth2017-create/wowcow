@@ -2435,7 +2435,9 @@ async function removeNotifEmail(id) {
 let _storeMap = null;
 
 function setStoreView(view) {
-  const tableWrap = document.querySelector('#tab-stores .table-wrap');
+  const tableWrap = document.getElementById('stores-list-container') ||
+                    document.querySelector('#tab-stores .table-wrap') ||
+                    document.querySelector('#tab-stores .table-card');
   const tableFooter = document.getElementById('table-footer');
   const mapEl = document.getElementById('stores-map-view');
   const listBtn = document.getElementById('btn-list-view');

@@ -193,6 +193,9 @@ async function migrate() {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
 
+  // ── Per-user invoice payment permission ──────────────────────────────────────
+  await q('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_pay_invoice BOOLEAN NOT NULL DEFAULT false');
+
   // Create production admin account if it doesn't exist
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@wowcowdistributors.com';
   const adminPassword = process.env.ADMIN_PASSWORD;
@@ -385,7 +388,12 @@ app.post('/api/signup', rateLimit(5, 60 * 1000), async (req, res) => {
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
-app.get('/api/me', authenticate, (req, res) => res.json(req.user));
+app.get('/api/me', authenticate, async (req, res) => {
+  try {
+    const user = await one('SELECT id,email,role,store_id,name,can_pay_invoice,pricing_tier FROM users WHERE id=$1', [req.user.id]);
+    res.json(user || req.user);
+  } catch(e) { res.json(req.user); }
+});
 
 app.patch('/api/profile', authenticate, async (req, res) => {
   try {
@@ -580,6 +588,36 @@ app.get('/api/stores', authenticate, async (req, res) => {
       by_product: byProduct, orders_over_time: ordersOverTime
     });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
+});
+
+// ── ACTIVITY LOG ──────────────────────────────────────────────────────────────
+app.get('/api/activity-log', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const logs = await all('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 200');
+    res.json(logs);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── EXPORT ORDERS / COMMISSIONS AS CSV ───────────────────────────────────────
+app.get('/api/export/orders-csv', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const orders = await all(`
+      SELECT o.id, o.created_at, u.name as customer, u.email, o.status, o.payment_method, o.payment_status,
+             o.subtotal, o.shipping_cost, o.total, s.name as store_name
+      FROM orders o
+      LEFT JOIN users u ON u.id = o.user_id
+      LEFT JOIN stores s ON s.id = o.store_id
+      ORDER BY o.created_at DESC
+    `);
+    const headers = ['Order ID','Date','Customer','Email','Store','Status','Payment Method','Payment Status','Subtotal','Shipping','Total'];
+    const rows = orders.map(o => [
+      o.id, new Date(o.created_at).toLocaleDateString('en-US'), o.customer||'', o.email||'', o.store_name||'',
+      o.status, o.payment_method, o.payment_status, o.subtotal, o.shipping_cost, o.total
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
+    res.setHeader('Content-Type','text/csv');
+    res.setHeader('Content-Disposition','attachment; filename=wowcow-orders.csv');
+    res.send([headers.join(','), ...rows].join('\n'));
+  } catch(e) { console.error(e.message); res.status(500).json({ error: 'Export failed' }); }
 });
 
 // ── FEEDBACK / FEATURE REQUESTS ───────────────────────────────────────────────
@@ -809,7 +847,7 @@ app.post('/api/users', authenticate, authorize('admin'), async (req, res) => {
 });
 
 app.get('/api/users', authenticate, authorize('admin'), async (req, res) => {
-  try { res.json(await all('SELECT id,email,name,phone,role,status,pricing_tier FROM users ORDER BY role,name')); }
+  try { res.json(await all('SELECT id,email,name,phone,role,status,pricing_tier,can_pay_invoice FROM users ORDER BY role,name')); }
   catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
 
@@ -908,9 +946,10 @@ app.patch('/api/users/:id/pricing', authenticate, authorize('admin'), async (req
   try {
     const user = await one('SELECT * FROM users WHERE id=$1', [req.params.id]);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const { tier, custom_prices } = req.body || {};
+    const { tier, custom_prices, can_pay_invoice } = req.body || {};
     if (!tier) return res.status(400).json({ error: 'Tier is required' });
     await applyPricingTier(parseInt(req.params.id), tier, custom_prices);
+    await q('UPDATE users SET can_pay_invoice=$1 WHERE id=$2', [!!can_pay_invoice, req.params.id]);
     await logActivity('pricing_updated', user.name||user.email, req.user.email);
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
@@ -922,8 +961,9 @@ app.patch('/api/users/:id/approve', authenticate, authorize('admin'), async (req
     if (!user) return res.status(404).json({ error: 'User not found' });
     await q("UPDATE users SET status='active' WHERE id=$1", [req.params.id]);
     if (user.store_id) await q("UPDATE stores SET status='active' WHERE id=$1", [user.store_id]);
-    const { tier, custom_prices } = req.body || {};
+    const { tier, custom_prices, can_pay_invoice } = req.body || {};
     if (tier) await applyPricingTier(parseInt(req.params.id), tier, custom_prices);
+    await q('UPDATE users SET can_pay_invoice=$1 WHERE id=$2', [!!can_pay_invoice, req.params.id]);
     await logActivity('approved', user.name||user.email, req.user.email);
 
     // Send approval email to user
@@ -1162,6 +1202,35 @@ app.patch('/api/products/:id', authenticate, authorize('admin'), async (req, res
       'UPDATE products SET name=$1,description=$2,image_url=$3,sku=$4,stock=$5,active=$6 WHERE id=$7 RETURNING *',
       [name??p.name, description??p.description, image_url??p.image_url, sku??p.sku, stock??p.stock, active??p.active, req.params.id]
     );
+
+    // ── Auto-sync to the matching product on ADDY (same SKU or name) ────────────
+    // Syncs: name, description, image_url, sku, active status, and MSRP-derived retail_price.
+    // Does NOT sync stock — WowCow and ADDY track separate physical inventory pools.
+    try {
+      const finalSku = sku ?? p.sku;
+      const finalName = name ?? p.name;
+      // Match using the ORIGINAL sku/name (in case sku/name itself is being changed this request)
+      const match = await one(
+        'SELECT id FROM addy.products WHERE sku=$1 OR LOWER(name)=LOWER($2)',
+        [p.sku || '', p.name]
+      );
+      if (match) {
+        const syncFields = ['name=$1','description=$2','image_url=$3','sku=$4','active=$5'];
+        const syncParams = [finalName, description??p.description, image_url??p.image_url, finalSku, active??p.active];
+
+        // If store_owner price was updated this request, back-calculate MSRP and sync as ADDY's retail_price
+        if (prices && prices.store_owner !== undefined && prices.store_owner !== '') {
+          const newRetail = Math.round(parseFloat(prices.store_owner) * 2 * 100) / 100;
+          syncFields.push(`retail_price=$${syncParams.length + 1}`);
+          syncParams.push(newRetail);
+        }
+
+        syncParams.push(match.id);
+        await q(`UPDATE addy.products SET ${syncFields.join(',')} WHERE id=$${syncParams.length}`, syncParams);
+        console.log(`✅ Synced product fields to ADDY product #${match.id}`);
+      }
+    } catch(syncErr) { console.log('Sync to ADDY skipped:', syncErr.message); }
+
     if (prices) {
       for (const [role, price] of Object.entries(prices)) {
         if (price !== '' && price != null) {
@@ -1566,6 +1635,14 @@ app.post('/api/orders', authenticate, async (req, res) => {
     if (!payment_method) return res.status(400).json({ error: 'Payment method required' });
     if (!shipping_address || !shipping_city || !shipping_state || !shipping_zip) return res.status(400).json({ error: 'Complete shipping address required' });
 
+    // Server-side enforcement: only users explicitly granted invoice access can pay this way
+    if (payment_method === 'invoice') {
+      const buyerCheck = await one('SELECT can_pay_invoice FROM users WHERE id=$1', [userId]);
+      if (!buyerCheck?.can_pay_invoice) {
+        return res.status(403).json({ error: 'Invoice payment is not enabled for your account. Please pay by card.' });
+      }
+    }
+
     const cart = store_id
       ? await one('SELECT * FROM carts WHERE user_id=$1 AND store_id=$2', [userId, store_id])
       : await one('SELECT * FROM carts WHERE user_id=$1 AND store_id IS NULL', [userId]);
@@ -1677,11 +1754,29 @@ app.patch('/api/orders/:id/status', authenticate, authorize('admin'), async (req
     if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const order = await one('SELECT * FROM orders WHERE id=$1', [req.params.id]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    const buyer = await one('SELECT email, name FROM users WHERE id=$1', [order.user_id]);
     await q('UPDATE orders SET status=$1 WHERE id=$2', [status, req.params.id]);
+
     if (status === 'cancelled') {
       await q("UPDATE invoices SET payment_status='cancelled' WHERE order_id=$1", [req.params.id]);
       await q("UPDATE orders SET payment_status='cancelled' WHERE id=$1", [req.params.id]);
+
+      // ── Auto-refund via Stripe if this order was paid by card ──────────────────
+      if (order.payment_method === 'card' && order.payment_status === 'paid') {
+        try {
+          const invoice = await one('SELECT stripe_payment_intent_id FROM invoices WHERE order_id=$1', [req.params.id]);
+          if (invoice?.stripe_payment_intent_id) {
+            await stripe.refunds.create({ payment_intent: invoice.stripe_payment_intent_id });
+            await logActivity('refunded_order', `Order #${req.params.id} — $${order.total}`, req.user.email);
+            console.log(`✅ Refunded order #${req.params.id} via Stripe`);
+          }
+        } catch(refundErr) {
+          console.error(`❌ Refund failed for order #${req.params.id}:`, refundErr.message);
+          // Don't block the cancellation if refund fails — admin can refund manually in Stripe dashboard
+        }
+      }
     }
+
     if (status === 'delivered' && order.status !== 'delivered' && order.store_id) {
       const items = await all('SELECT * FROM order_items WHERE order_id=$1', [req.params.id]);
       for (const item of items) {
@@ -1692,6 +1787,33 @@ app.patch('/api/orders/:id/status', authenticate, authorize('admin'), async (req
         );
       }
     }
+
+    // ── Order status email to the customer (shipped / delivered / cancelled) ───
+    if (resend && buyer?.email && ['shipped','delivered','cancelled'].includes(status)) {
+      const statusCopy = {
+        shipped: { subject: 'Your order has shipped! 📦', heading: 'On its way!', body: `Your order #${req.params.id} has shipped and is on its way to you.` },
+        delivered: { subject: 'Your order was delivered ✅', heading: 'Delivered!', body: `Your order #${req.params.id} has been marked as delivered. We hope you love it!` },
+        cancelled: { subject: 'Your order was cancelled', heading: 'Order Cancelled', body: `Your order #${req.params.id} has been cancelled.${order.payment_method === 'card' && order.payment_status === 'paid' ? ' If you paid by card, your refund has been processed and should appear in 5-10 business days.' : ''}` }
+      };
+      const copy = statusCopy[status];
+      try {
+        await resend.emails.send({
+          from: (process.env.EMAIL_FROM || 'WowCow Distributors <notifications@wowcowdistributors.com>').replace(/\n/g,' ').trim(),
+          to: [buyer.email],
+          subject: copy.subject,
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;">
+            <div style="background:#2563eb;border-radius:12px;padding:24px;text-align:center;margin-bottom:28px;">
+              <p style="color:rgba(255,255,255,0.7);font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:0 0 8px;">WowCow Distribution</p>
+              <h1 style="color:#fff;font-size:24px;font-weight:800;margin:0;">${copy.heading}</h1>
+            </div>
+            <p style="font-size:15px;color:#334155;line-height:1.6;">Hi ${buyer.name || 'there'},</p>
+            <p style="font-size:15px;color:#334155;line-height:1.6;">${copy.body}</p>
+            <p style="font-size:13px;color:#94a3b8;margin-top:28px;">Log in to your dashboard to view full order details.</p>
+          </div>`
+        });
+      } catch(emailErr) { console.log('Status email skipped:', emailErr.message); }
+    }
+
     res.json({ success: true });
   } catch(e) { console.error(e.message); res.status(500).json({ error: 'Something went wrong. Please try again.' }); }
 });
